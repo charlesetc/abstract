@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"unicode/utf8"
 	"strings"
+	"errors"
 )
 
 type Token int
@@ -41,7 +42,7 @@ func (self *Parser) tokenize(results []*Result) [][]*TokenValue {
 
 func (self *Parser) retokenize(tokvals [][]*TokenValue, value string) [][]*TokenValue {
 	for i := range tokvals {
-		if len(value) > 0 { // Not Empty
+		if len(value) > 0 { // Empty strings can be parsed, sure, but they shouldn't be added here.
 			tokvals[i] = append(tokvals[i], &TokenValue{value: value, token: self.token})
 		}
 	}
@@ -99,38 +100,39 @@ func optionally(f func(string) []*Result) func(string) []*Result  {
 }
 
 func matchString(string_a string) func(string) []*Result {
-  return satisfyString(func (string_b string) string {
+  return satisfyString(func (string_b string) (string, error) {
     if strings.HasPrefix(string_b, string_a) {
-      return string_a
+      return string_a, nil
     }
-    return "" // The equivalent of 'false', as in 'no parse'
+		err := "String " + string_a + " did not start with " + string_b + "."
+    return "", errors.New(err)
   })
 }
 
 func matchNothing() func(string) []*Result {
-	return satisfyString(func (string_b string) string {
-		return ""
+	return satisfyString(func (string_b string) (string, error) {
+		return "", errors.New("Never Satisfied. Never Graduate")
 	})
 }
 
-func satisfyString(f func(string) string) func(string) []*Result {
+func satisfyString(f func(string) (string, error)) func(string) []*Result {
 	return func(str string) []*Result {
-		parsed_string := f(str)
-    length := len([]rune(parsed_string))
-		if length > 0 { // satisfied
-			return []*Result{&Result{left_over: str[length:], value: parsed_string}}
-		} // empty parse
-    return []*Result{&Result{left_over: str, value: ""}}
+		parsed_string, err := f(str)
+		if err == nil {
+			// Satisfied
+			return []*Result{&Result{left_over: str[len([]rune(parsed_string)):], value: parsed_string}}
+		}
+    return []*Result{} // Did not parse; return empty Result list
 	}
 }
 
 func satisfyRune(f func(rune) bool) func(string) []*Result {
-	return satisfyString(func(s string) string {
+	return satisfyString(func(s string) (string, error) {
     c, _ := utf8.DecodeRuneInString(s)
     if f(c) {
-      return string(c)
+      return string(c), nil
     } else {
-      return ""
+      return "", errors.New("Rune was not satisfied")
     }
 	})
 }
@@ -176,19 +178,20 @@ func main() {
 	s.token = SPACE
 	s.action = optionally(satisfyRune(isSpace))
 
+
 	q := new(Parser)
 	q.token = LEFT
 	q.action = satisfyRune(isChar('c'))
 
   r := new(Parser)
   r.token = 5 // Just for testing purposes
-  r.action = matchString("Hello") // MatchString is no longer greedy!
+  r.action = matchString("  Hello") // MatchString is no longer greedy!
 
 	t := new(Parser)
 	t.token = 0 // eof
 	t.action = matchNothing()
 
-	q.chain(p).chain(s).chain(r).chain(t)
+	q.chain(p).chain(s).chain(r)
 
 	outputs := q.parse("c  Hello World")
 
