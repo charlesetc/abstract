@@ -5,8 +5,8 @@ import (
 	"unicode/utf8"
 	"bytes"
 	"strings"
-	"strconv"
 	"errors"
+	"strconv"
 )
 
 type Token int
@@ -38,6 +38,10 @@ type Parser struct {
 
 // Methods for Parser
 
+func (self Token) String() string {
+	return strconv.Itoa(int(self))
+}
+
 func NewTokenTree(value string, token Token) *TokenTree {
 	toktree := new(TokenTree)
 	toktree.value = value
@@ -53,7 +57,7 @@ func (self *TokenTree) String() string {
 	buffer.WriteString(self.value)
 	buffer.WriteString("'")
 	buffer.WriteString("[")
-	buffer.WriteString(strconv.Itoa(int(self.token)))
+	buffer.WriteString(self.token.String())
 	buffer.WriteString("]")
 
 	buffer.WriteString("(")
@@ -83,13 +87,19 @@ func (self *TokenRoot) String() string {
 	return buffer.String()
 }
 
-func (self *Parser) tokenize(results []*Result) []*TokenRoot {
+func (self *Parser) tokenize(results []*Result) ([]*TokenRoot, error) {
 	outputs := make([]*TokenRoot, len(results))
 	for i, result := range results {
 		outputs[i] = new(TokenRoot)
 		outputs[i].branches = []*TokenTree{NewTokenTree(result.value, self.token)}
 	}
-	return outputs
+	var err error
+	if len(results) == 0 {
+		err = errors.New("Did not parse token " + self.token.String())
+	} else {
+		err = nil
+	}
+	return outputs, err
 }
 
 func (self *Parser) retokenize(root_list []*TokenRoot, value string) []*TokenRoot {
@@ -101,22 +111,31 @@ func (self *Parser) retokenize(root_list []*TokenRoot, value string) []*TokenRoo
 	return root_list
 }
 
-func (self *Parser) BasicParse(str string) []*TokenRoot {
-	return self.tokenize(self.action(str))
+func (self *Parser) StartParse(str string) ([]*TokenRoot, []*Result, error) {
+	result_list := self.action(str)
+	root_list, err := self.tokenize(result_list)
+	return root_list, result_list, err
+}
+
+// Meant to be used after StartParse if necessary
+// Helpful because StartParse can be used to look ahead
+func (self *Parser) FinishParse(result_list []*Result) []*TokenRoot {
+	outputs := make([]*TokenRoot, 0)
+	for _, a_result := range result_list {
+		child_results := self.next.Parse(a_result.left_over)
+		// I think this append will work, but I'm not entirely sure.
+		outputs = append(outputs, self.retokenize(child_results, a_result.value)...)
+	}
+	return outputs
 }
 
 func (self *Parser) Parse(str string) []*TokenRoot {
+	parent_results := self.action(str)
 	if self.next != nil {
-		parent_results := self.action(str)
-		outputs := make([]*TokenRoot, 0)
-		for _, a_result := range parent_results {
-			child_results := self.next.Parse(a_result.left_over)
-			// I think this append will work, but I'm not entirely sure.
-			outputs = append(outputs, self.retokenize(child_results, a_result.value)...)
-		}
-		return outputs
+		return self.FinishParse(parent_results)
 	}
-	return self.BasicParse(str) // End of the line
+	root_list, _ := self.tokenize(parent_results)
+	return root_list
 }
 
 func (self *Parser) Chain(other *Parser) *Parser {
