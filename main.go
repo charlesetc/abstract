@@ -3,7 +3,9 @@ package main
 import (
 	"fmt"
 	"unicode/utf8"
+	"bytes"
 	"strings"
+	"strconv"
 	"errors"
 )
 
@@ -19,6 +21,15 @@ type TokenValue struct {
 	token Token
 }
 
+type TokenTree struct {
+	TokenValue
+	branches []*TokenTree
+}
+
+type TokenRoot struct {
+	branches []*TokenTree
+}
+
 type Parser struct {
 	token  Token
 	action func(string) ([]*Result)
@@ -27,48 +38,92 @@ type Parser struct {
 
 // Methods for Parser
 
+func NewTokenTree(value string, token Token) *TokenTree {
+	toktree := new(TokenTree)
+	toktree.value = value
+	toktree.token = token
+	toktree.branches = make([]*TokenTree, 0)
+	return toktree
+}
 
-func (self *Parser) tokenize(results []*Result) [][]*TokenValue {
-	outputs := make([][]*TokenValue, len(results))
+func (self *TokenTree) String() string {
+	var buffer bytes.Buffer
+
+	buffer.WriteString("'")
+	buffer.WriteString(self.value)
+	buffer.WriteString("'")
+	buffer.WriteString("[")
+	buffer.WriteString(strconv.Itoa(int(self.token)))
+	buffer.WriteString("]")
+
+	buffer.WriteString("(")
+	for i, tree := range self.branches {
+		if i != 0 {
+			buffer.WriteString(" ")
+		}
+		buffer.WriteString(tree.String())
+	}
+	buffer.WriteString(")")
+
+	return buffer.String()
+}
+
+func (self *TokenRoot) String() string {
+	var buffer bytes.Buffer
+
+	buffer.WriteString("TokenRoot (")
+	for i := range self.branches {
+		if i != 0 {
+			buffer.WriteString(" ")
+		}
+		buffer.WriteString(self.branches[i].String())
+	}
+	buffer.WriteString(")")
+
+	return buffer.String()
+}
+
+func (self *Parser) tokenize(results []*Result) []*TokenRoot {
+	outputs := make([]*TokenRoot, len(results))
 	for i, result := range results {
-		outputs[i] = make([]*TokenValue, 1)
-		fmt.Println("***")
-		fmt.Println(result)
-		fmt.Println("***")
-		outputs[i][0] = &TokenValue{value: result.value, token: self.token}
+		outputs[i] = new(TokenRoot)
+		outputs[i].branches = []*TokenTree{NewTokenTree(result.value, self.token)}
 	}
 	return outputs
 }
 
-func (self *Parser) retokenize(tokvals [][]*TokenValue, value string) [][]*TokenValue {
-	for i := range tokvals {
+func (self *Parser) retokenize(root_list []*TokenRoot, value string) []*TokenRoot {
+	for i := range root_list {
 		if len(value) > 0 { // Empty strings can be parsed, sure, but they shouldn't be added here.
-			tokvals[i] = append(tokvals[i], &TokenValue{value: value, token: self.token})
+			root_list[i].branches = append(root_list[i].branches, NewTokenTree(value, self.token))
 		}
 	}
-	return tokvals
+	return root_list
 }
 
-func (self *Parser) parse(str string) [][]*TokenValue {
-	parent_results := self.action(str)
-	outputs := make([][]*TokenValue, 0)
-	if self.next != nil { // Pass results on to child to try parsing
+func (self *Parser) BasicParse(str string) []*TokenRoot {
+	return self.tokenize(self.action(str))
+}
+
+func (self *Parser) Parse(str string) []*TokenRoot {
+	if self.next != nil {
+		parent_results := self.action(str)
+		outputs := make([]*TokenRoot, 0)
 		for _, a_result := range parent_results {
-			child_results := self.next.parse(a_result.left_over)
+			child_results := self.next.Parse(a_result.left_over)
 			// I think this append will work, but I'm not entirely sure.
 			outputs = append(outputs, self.retokenize(child_results, a_result.value)...)
 		}
-	} else { // Nothing else to parse...
-		return self.tokenize(parent_results) // This is an essential line.
+		return outputs
 	}
-	return outputs
+	return self.BasicParse(str) // End of the line
 }
 
-func (self *Parser) chain(other *Parser) *Parser {
+func (self *Parser) Chain(other *Parser) *Parser {
 	if self.next == nil {
 		self.next = other
 	} else {
-		self.next.chain(other)
+		self.next.Chain(other)
 	}
 	return other // faster for chaining.
 }
@@ -185,21 +240,18 @@ func main() {
 
   r := new(Parser)
   r.token = 5 // Just for testing purposes
-  r.action = matchString("  Hello") // MatchString is no longer greedy!
+  r.action = matchString("Hello") // MatchString is no longer greedy!
 
 	t := new(Parser)
 	t.token = 0 // eof
 	t.action = matchNothing()
 
-	q.chain(p).chain(s).chain(r)
+	q.Chain(p).Chain(s).Chain(r)
 
-	outputs := q.parse("c  Hello World")
+	root_list := q.Parse("c Hello World")
 
-	for i := range outputs {
-		fmt.Println("----")
-		for j := range outputs[i] {
-			fmt.Println(outputs[i][j])
-		}
+	for i := range root_list {
+		fmt.Println(root_list[i])
 	}
 
 }
