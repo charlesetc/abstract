@@ -39,11 +39,9 @@ type TokenTree struct {
 
 
 type ParserLike interface {
-	BeginParse(string) ([]*TokenRoot, []*Result, error)
-	FinishParse([]*Result, ParserLike) []*TokenRoot
+	CanParse(string) bool
 	Parse(string) []*TokenRoot
 	Chain(ParserLike) ParserLike
-	Next() ParserLike
 }
 
 type Lexer struct {
@@ -62,30 +60,20 @@ type AbstractParser struct {
 
 // I think compilers should be transparent to other compilers
 // when it comes to whether or not they'll work.
-func (self *AbstractParser) BeginParse(str string) ([]*TokenRoot, []*Result, error) {
-	return self.next.BeginParse(str) // Is this right?
-}
-
-func (self *AbstractParser) FinishParse(arg []*Result, other ParserLike) []*TokenRoot {
-	return other.FinishParse(arg, other.Next())
+func (self *AbstractParser) CanParse(str string) bool {
+	return self.next.CanParse(str) // Is this right?
 }
 
 func (self *AbstractParser) Parse(str string) []*TokenRoot {
 	return self.parse_action(str, self)
 }
 
-func (self *AbstractParser) Next() ParserLike {
-	return self.next
-}
-func (self *AbstractParser) SetNext(other ParserLike) {
-	self.next = other
-}
 
 func (self *AbstractParser) Chain(other ParserLike) ParserLike {
-	if self.Next() == nil {
-		self.SetNext(other)
+	if self.next == nil {
+		self.next = other
 	} else {
-		self.Next().Chain(other)
+		self.next.Chain(other)
 	}
 	return other // faster for chaining.
 }
@@ -98,12 +86,11 @@ func NewAbstractParser(f func (string, *AbstractParser) []*TokenRoot) *AbstractP
 
 func Optionally(parser ParserLike) *AbstractParser {
 	return NewAbstractParser(func (str string, self *AbstractParser) []*TokenRoot {
-		root_list, result_list, err := parser.BeginParse(str)
-		if err == nil { // No problem
-			parser.Chain(self.next)
-			parser.FinishParse(result_list, self.next)
-			return root_list
+		if parser.CanParse(str) {
+			parser.Chain(self.next) // obvs
+			return parser.Parse(str)
 		}
+		// Else can't parse
 		return self.next.Parse(str)
 	})
 }
@@ -114,8 +101,8 @@ func Optionally(parser ParserLike) *AbstractParser {
 
 func NewCompiler(f func ([]*TokenRoot) []*TokenRoot) *AbstractParser {
 	return NewAbstractParser(func (str string, self *AbstractParser) []*TokenRoot {
-		roots := self.next.Parse(str)
-		return f(roots)
+		roots := self.next.Parse(str) // Basically just wraps the function.
+		return f(roots)								// Not sure if it's worth it, but whatever
 	})
 }
 
@@ -182,14 +169,16 @@ func (self *TokenTree) Traverse(f func(*TokenTree))  {
 	f(self)
 }
 
-func (self *TokenRoot) Tree() *TokenTree {
-	tree := new(TokenTree)
-	tree.branches = self.branches
-	return tree
-}
+// func (self *TokenRoot) Tree() *TokenTree {
+// 	tree := new(TokenTree)
+// 	tree.branches = self.branches
+// 	return tree
+// }
 
 func (self *TokenRoot) Traverse(f func(*TokenTree)) {
-	self.Tree().Traverse(f)
+	for _, child := range self.branches {
+		child.Traverse(f) // #depthfirstsearch #bottomup?
+	}
 }
 
 func (self *TokenTree) String() string {
@@ -255,34 +244,25 @@ func (self *Lexer) retokenize(root_list []*TokenRoot, value string) []*TokenRoot
 	return root_list
 }
 
-func (self *Lexer) BeginParse(str string) ([]*TokenRoot, []*Result, error) {
+func (self *Lexer) CanParse(str string) (val bool) {
 	result_list := self.action(str)
-	root_list, err := self.tokenize(result_list)
-	return root_list, result_list, err
-}
-
-// Meant to be used after BeginParse if necessary
-// Helpful because BeginParse can be used to look ahead
-func (self *Lexer) FinishParse(result_list []*Result, other ParserLike) []*TokenRoot {
-	outputs := make([]*TokenRoot, 0)
-	for _, a_result := range result_list {
-		child_results := other.Parse(a_result.left_over)
-		// I think this append will work, but I'm not entirely sure.
-		outputs = append(outputs, self.retokenize(child_results, a_result.value)...)
+	val = len(result_list) > 0
+	if self.next != nil {
+		val = val && self.next.CanParse(str) // Get the entire chain!
 	}
-	return outputs
+	return
 }
 
 func (self *Lexer) Parse(str string) []*TokenRoot {
-	a()
 	parent_results := self.action(str)
-
-	for _, result := range parent_results {
-		fmt.Println(result)
-	}
-
 	if self.next != nil {
-		return self.FinishParse(parent_results, self)
+		outputs := make([]*TokenRoot, 0)
+		for _, a_result := range parent_results {
+				child_results := self.next.Parse(a_result.left_over)
+			// I think this append will work, but I'm not entirely sure.
+			outputs = append(outputs, self.retokenize(child_results, a_result.value)...)
+		}
+		return outputs
 	}
 	root_list, _ := self.tokenize(parent_results)
 	return root_list
@@ -295,14 +275,6 @@ func (self *Lexer) Chain(other ParserLike) ParserLike {
 		self.next.Chain(other)
 	}
 	return other // faster for chaining.
-}
-
-func (self *Lexer) Next() ParserLike {
-	return self.next
-}
-
-func (self *Lexer) SetNext(other ParserLike) {
-	self.next = other
 }
 
 
