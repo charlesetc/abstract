@@ -27,10 +27,6 @@ type TokenValue struct {
 	token Token
 }
 
-type TokenRoot struct {
-	branches []*TokenTree
-}
-
 
 type TokenTree struct {
 	TokenValue
@@ -40,7 +36,7 @@ type TokenTree struct {
 
 type ParserLike interface {
 	CanParse(string) bool
-	Parse(string) []*TokenRoot
+	Parse(string) []*TokenTree
 	Chain(ParserLike) ParserLike
 }
 
@@ -54,7 +50,7 @@ type Lexer struct {
 //// AbstractParsers
 
 type AbstractParser struct {
-	parse_action func(string, *AbstractParser) []*TokenRoot
+	parse_action func(string, *AbstractParser) []*TokenTree
 	next ParserLike
 }
 
@@ -64,7 +60,7 @@ func (self *AbstractParser) CanParse(str string) bool {
 	return self.next.CanParse(str) // Is this right?
 }
 
-func (self *AbstractParser) Parse(str string) []*TokenRoot {
+func (self *AbstractParser) Parse(str string) []*TokenTree {
 	return self.parse_action(str, self)
 }
 
@@ -78,14 +74,14 @@ func (self *AbstractParser) Chain(other ParserLike) ParserLike {
 	return other // faster for chaining.
 }
 
-func NewAbstractParser(f func (string, *AbstractParser) []*TokenRoot) *AbstractParser {
+func NewAbstractParser(f func (string, *AbstractParser) []*TokenTree) *AbstractParser {
 	c := new(AbstractParser)
 	c.parse_action = f
 	return c
 }
 
 func Optionally(parser ParserLike) *AbstractParser {
-	return NewAbstractParser(func (str string, self *AbstractParser) []*TokenRoot {
+	return NewAbstractParser(func (str string, self *AbstractParser) []*TokenTree {
 		if parser.CanParse(str) {
 			parser.Chain(self.next) // obvs
 			return parser.Parse(str)
@@ -99,50 +95,29 @@ func Optionally(parser ParserLike) *AbstractParser {
 
 // Compilers just deal with the tokens and the syntax tree.
 
-func NewCompiler(f func ([]*TokenRoot) []*TokenRoot) *AbstractParser {
-	return NewAbstractParser(func (str string, self *AbstractParser) []*TokenRoot {
+func NewCompiler(f func ([]*TokenTree) []*TokenTree) *AbstractParser {
+	return NewAbstractParser(func (str string, self *AbstractParser) []*TokenTree {
 		roots := self.next.Parse(str) // Basically just wraps the function.
 		return f(roots)								// Not sure if it's worth it, but whatever
 	})
 }
 
 func Operator(token Token) *AbstractParser {
-	return NewCompiler(func (roots []*TokenRoot) []*TokenRoot {
+	return NewCompiler(func (roots []*TokenTree) []*TokenTree {
 		for _, root := range roots {
-			root.Traverse(func (tree *TokenTree) {
-				var first int
-				for i, child := range tree.branches {
-					if child.token == token {
-						first = i
-						break
-					}
+			root.Traverse(func (child *TokenTree, parent *TokenTree, index int) {
+				if child.token != token {
+					return
 				}
-				elem := new(TokenTree)
-				elem.token = OPERATOR
-				elem.branches = make([]*TokenTree, 3)
+				left := NewTokenTree("", LEFT) // Left and right are fill-ins for other things
+				right := NewTokenTree("", RIGHT)  			// I guess?
+				left.branches = append(left.branches, parent.branches[:index]...)
+				right.branches = append(right.branches, parent.branches[index+1:]...)
 
-				elem.branches[0] = new(TokenTree)
-				elem.branches[0].branches = tree.branches[:first]
-
-				elem.branches[1] = new(TokenTree)
-				elem.branches[1].token = token
-
-				// This weird bit of array functions gets an empty array when
-				// there are none to the right
-
-				elem.branches[2] = new(TokenTree)
-				array := tree.branches[first:] // If this doesn't work, pass by reference
-				array = append(array, new(TokenTree))
-				array = array[:len(array)-1] // Get rid of that element I added
-				elem.branches[2].branches = array
-
-				*tree = *elem
-
-				// Well....
-				// Values are being dropped and there are duplicate trees?
-				// but whatever! It might work in the future!
-
-			})
+				// Make the parent the child... it will make sense
+				parent.TokenValue = child.TokenValue
+				parent.branches = []*TokenTree{left, right}
+			}, nil, 0) // The zero is never used.
 		}
 		return roots // for chaining
 	})
@@ -162,24 +137,22 @@ func NewTokenTree(value string, token Token) *TokenTree {
 	return toktree
 }
 
-func (self *TokenTree) Traverse(f func(*TokenTree))  {
-	for _, child := range self.branches {
-		child.Traverse(f) // #depthfirstsearch #bottomup?
+func (self *TokenTree) Traverse(f func(*TokenTree, *TokenTree, int), parent *TokenTree, the_index int)  {
+	for index, child := range self.branches {
+		child.Traverse(f, self, index) // #depthfirstsearch #bottomup?
 	}
-	f(self)
+	// It's called with a nil parent.
+	if parent != nil {
+		f(self, parent, the_index)
+	}
 }
 
-// func (self *TokenRoot) Tree() *TokenTree {
+// func (self *TokenTree) Tree() *TokenTree {
 // 	tree := new(TokenTree)
 // 	tree.branches = self.branches
 // 	return tree
 // }
 
-func (self *TokenRoot) Traverse(f func(*TokenTree)) {
-	for _, child := range self.branches {
-		child.Traverse(f) // #depthfirstsearch #bottomup?
-	}
-}
 
 func (self *TokenTree) String() string {
 	var buffer bytes.Buffer
@@ -202,28 +175,28 @@ func (self *TokenTree) String() string {
 
 	return buffer.String()
 }
-
-func (self *TokenRoot) String() string {
-	var buffer bytes.Buffer
-
-	buffer.WriteString("TokenRoot (")
-	for i := range self.branches {
-		if i != 0 {
-			buffer.WriteString(" ")
-		}
-		buffer.WriteString(self.branches[i].String())
-	}
-	buffer.WriteString(")")
-
-	return buffer.String()
-}
+//
+// func (self *TokenTree) String() string {
+// 	var buffer bytes.Buffer
+//
+// 	buffer.WriteString("TokenTree (")
+// 	for i := range self.branches {
+// 		if i != 0 {
+// 			buffer.WriteString(" ")
+// 		}
+// 		buffer.WriteString(self.branches[i].String())
+// 	}
+// 	buffer.WriteString(")")
+//
+// 	return buffer.String()
+// }
 
 //// Lexers
 
-func (self *Lexer) tokenize(results []*Result) ([]*TokenRoot, error) {
-	outputs := make([]*TokenRoot, len(results))
+func (self *Lexer) tokenize(results []*Result) ([]*TokenTree, error) {
+	outputs := make([]*TokenTree, len(results))
 	for i, result := range results {
-		outputs[i] = new(TokenRoot)
+		outputs[i] = new(TokenTree)
 		outputs[i].branches = []*TokenTree{NewTokenTree(result.value, self.token)}
 	}
 	var err error
@@ -235,7 +208,7 @@ func (self *Lexer) tokenize(results []*Result) ([]*TokenRoot, error) {
 	return outputs, err
 }
 
-func (self *Lexer) retokenize(root_list []*TokenRoot, value string) []*TokenRoot {
+func (self *Lexer) retokenize(root_list []*TokenTree, value string) []*TokenTree {
 	for i := range root_list {
 		if len(value) > 0 { // Empty strings can be parsed, sure, but they shouldn't be added here.
 			root_list[i].branches = append(root_list[i].branches, NewTokenTree(value, self.token))
@@ -253,10 +226,10 @@ func (self *Lexer) CanParse(str string) (val bool) {
 	return
 }
 
-func (self *Lexer) Parse(str string) []*TokenRoot {
+func (self *Lexer) Parse(str string) []*TokenTree {
 	parent_results := self.action(str)
 	if self.next != nil {
-		outputs := make([]*TokenRoot, 0)
+		outputs := make([]*TokenTree, 0)
 		for _, a_result := range parent_results {
 				child_results := self.next.Parse(a_result.left_over)
 			// I think this append will work, but I'm not entirely sure.
@@ -401,7 +374,7 @@ func main() {
 
 	c.Chain(q).Chain(p).Chain(plus_op).Chain(Optionally(s)).Chain(r)
 
-	root_list := q.Parse("c + Hello World")
+	root_list := c.Parse("c + Hello World")
 
 	for i := range root_list {
 		fmt.Println(root_list[i])
