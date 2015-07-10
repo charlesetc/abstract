@@ -11,6 +11,12 @@ import (
 
 type Token int
 
+const (
+	OPERATOR Token = ((iota + 1) * -1)
+	LEFT_SIDE
+	RIGHT_SIDE
+)
+
 type Result struct {
 	value string
 	left_over string
@@ -21,22 +27,141 @@ type TokenValue struct {
 	token Token
 }
 
+type TokenRoot struct {
+	branches []*TokenTree
+}
+
+
 type TokenTree struct {
 	TokenValue
 	branches []*TokenTree
 }
 
-type TokenRoot struct {
-	branches []*TokenTree
+
+type ParserLike interface {
+	BeginParse(string) ([]*TokenRoot, []*Result, error)
+	FinishParse([]*Result, ParserLike) []*TokenRoot
+	Parse(string) []*TokenRoot
+	Chain(ParserLike) ParserLike
+	Next() ParserLike
 }
 
-type Parser struct {
+type Lexer struct {
 	token  Token
 	action func(string) ([]*Result)
-	next   *Parser
+	next   ParserLike
 }
 
-// Methods for Parser
+
+//// AbstractParsers
+
+type AbstractParser struct {
+	parse_action func(string, *AbstractParser) []*TokenRoot
+	next ParserLike
+}
+
+// I think compilers should be transparent to other compilers
+// when it comes to whether or not they'll work.
+func (self *AbstractParser) BeginParse(str string) ([]*TokenRoot, []*Result, error) {
+	return self.next.BeginParse(str) // Is this right?
+}
+
+func (self *AbstractParser) FinishParse(arg []*Result, other ParserLike) []*TokenRoot {
+	return other.FinishParse(arg, other.Next())
+}
+
+func (self *AbstractParser) Parse(str string) []*TokenRoot {
+	return self.parse_action(str, self)
+}
+
+func (self *AbstractParser) Next() ParserLike {
+	return self.next
+}
+func (self *AbstractParser) SetNext(other ParserLike) {
+	self.next = other
+}
+
+func (self *AbstractParser) Chain(other ParserLike) ParserLike {
+	if self.Next() == nil {
+		self.SetNext(other)
+	} else {
+		self.Next().Chain(other)
+	}
+	return other // faster for chaining.
+}
+
+func NewAbstractParser(f func (string, *AbstractParser) []*TokenRoot) *AbstractParser {
+	c := new(AbstractParser)
+	c.parse_action = f
+	return c
+}
+
+func Optionally(parser ParserLike) *AbstractParser {
+	return NewAbstractParser(func (str string, self *AbstractParser) []*TokenRoot {
+		root_list, result_list, err := parser.BeginParse(str)
+		if err == nil { // No problem
+			parser.Chain(self.next)
+			parser.FinishParse(result_list, self.next)
+			return root_list
+		}
+		return self.next.Parse(str)
+	})
+}
+
+//// Compilers
+
+// Compilers just deal with the tokens and the syntax tree.
+
+func NewCompiler(f func ([]*TokenRoot) []*TokenRoot) *AbstractParser {
+	return NewAbstractParser(func (str string, self *AbstractParser) []*TokenRoot {
+		roots := self.next.Parse(str)
+		return f(roots)
+	})
+}
+
+func Operator(token Token) *AbstractParser {
+	return NewCompiler(func (roots []*TokenRoot) []*TokenRoot {
+		for _, root := range roots {
+			root.Traverse(func (tree *TokenTree) {
+				var first int
+				for i, child := range tree.branches {
+					if child.token == token {
+						first = i
+						break
+					}
+				}
+				elem := new(TokenTree)
+				elem.token = OPERATOR
+				elem.branches = make([]*TokenTree, 3)
+
+				elem.branches[0] = new(TokenTree)
+				elem.branches[0].branches = tree.branches[:first]
+
+				elem.branches[1] = new(TokenTree)
+				elem.branches[1].token = token
+
+				// This weird bit of array functions gets an empty array when
+				// there are none to the right
+
+				elem.branches[2] = new(TokenTree)
+				array := tree.branches[first:] // If this doesn't work, pass by reference
+				array = append(array, new(TokenTree))
+				array = array[:len(array)-1] // Get rid of that element I added
+				elem.branches[2].branches = array
+
+				*tree = *elem
+
+				// Well....
+				// Values are being dropped and there are duplicate trees?
+				// but whatever! It might work in the future!
+
+			})
+		}
+		return roots // for chaining
+	})
+}
+
+//// Token Trees
 
 func (self Token) String() string {
 	return strconv.Itoa(int(self))
@@ -48,6 +173,23 @@ func NewTokenTree(value string, token Token) *TokenTree {
 	toktree.token = token
 	toktree.branches = make([]*TokenTree, 0)
 	return toktree
+}
+
+func (self *TokenTree) Traverse(f func(*TokenTree))  {
+	for _, child := range self.branches {
+		child.Traverse(f) // #depthfirstsearch #bottomup?
+	}
+	f(self)
+}
+
+func (self *TokenRoot) Tree() *TokenTree {
+	tree := new(TokenTree)
+	tree.branches = self.branches
+	return tree
+}
+
+func (self *TokenRoot) Traverse(f func(*TokenTree)) {
+	self.Tree().Traverse(f)
 }
 
 func (self *TokenTree) String() string {
@@ -87,7 +229,9 @@ func (self *TokenRoot) String() string {
 	return buffer.String()
 }
 
-func (self *Parser) tokenize(results []*Result) ([]*TokenRoot, error) {
+//// Lexers
+
+func (self *Lexer) tokenize(results []*Result) ([]*TokenRoot, error) {
 	outputs := make([]*TokenRoot, len(results))
 	for i, result := range results {
 		outputs[i] = new(TokenRoot)
@@ -102,7 +246,7 @@ func (self *Parser) tokenize(results []*Result) ([]*TokenRoot, error) {
 	return outputs, err
 }
 
-func (self *Parser) retokenize(root_list []*TokenRoot, value string) []*TokenRoot {
+func (self *Lexer) retokenize(root_list []*TokenRoot, value string) []*TokenRoot {
 	for i := range root_list {
 		if len(value) > 0 { // Empty strings can be parsed, sure, but they shouldn't be added here.
 			root_list[i].branches = append(root_list[i].branches, NewTokenTree(value, self.token))
@@ -111,34 +255,40 @@ func (self *Parser) retokenize(root_list []*TokenRoot, value string) []*TokenRoo
 	return root_list
 }
 
-func (self *Parser) StartParse(str string) ([]*TokenRoot, []*Result, error) {
+func (self *Lexer) BeginParse(str string) ([]*TokenRoot, []*Result, error) {
 	result_list := self.action(str)
 	root_list, err := self.tokenize(result_list)
 	return root_list, result_list, err
 }
 
-// Meant to be used after StartParse if necessary
-// Helpful because StartParse can be used to look ahead
-func (self *Parser) FinishParse(result_list []*Result) []*TokenRoot {
+// Meant to be used after BeginParse if necessary
+// Helpful because BeginParse can be used to look ahead
+func (self *Lexer) FinishParse(result_list []*Result, other ParserLike) []*TokenRoot {
 	outputs := make([]*TokenRoot, 0)
 	for _, a_result := range result_list {
-		child_results := self.next.Parse(a_result.left_over)
+		child_results := other.Parse(a_result.left_over)
 		// I think this append will work, but I'm not entirely sure.
 		outputs = append(outputs, self.retokenize(child_results, a_result.value)...)
 	}
 	return outputs
 }
 
-func (self *Parser) Parse(str string) []*TokenRoot {
+func (self *Lexer) Parse(str string) []*TokenRoot {
+	a()
 	parent_results := self.action(str)
+
+	for _, result := range parent_results {
+		fmt.Println(result)
+	}
+
 	if self.next != nil {
-		return self.FinishParse(parent_results)
+		return self.FinishParse(parent_results, self)
 	}
 	root_list, _ := self.tokenize(parent_results)
 	return root_list
 }
 
-func (self *Parser) Chain(other *Parser) *Parser {
+func (self *Lexer) Chain(other ParserLike) ParserLike {
 	if self.next == nil {
 		self.next = other
 	} else {
@@ -147,11 +297,18 @@ func (self *Parser) Chain(other *Parser) *Parser {
 	return other // faster for chaining.
 }
 
+func (self *Lexer) Next() ParserLike {
+	return self.next
+}
+
+func (self *Lexer) SetNext(other ParserLike) {
+	self.next = other
+}
+
+
 //////////////////////////////////////////////
 
-// Actual Parsing
-
-// Make a map to get strings from tokens
+//// Functional Parsing
 
 const (
 	EOF = iota
@@ -162,7 +319,6 @@ const (
 )
 
 var eof rune
-
 
 // Wraps a string -> []string, []string function
 // and adds the original string to the left_overs
@@ -242,32 +398,38 @@ func init() {
 }
 
 func main() {
-	var p *Parser
+	var p *Lexer
 
-	p = new(Parser)
+	p = new(Lexer)
 	p.token = SPACE
-	p.action = optionally(satisfyRune(isSpace))
+	p.action = satisfyRune(isSpace)
 
-	s := new(Parser)
+	s := new(Lexer)
 	s.token = SPACE
-	s.action = optionally(satisfyRune(isSpace))
+	s.action = satisfyRune(isSpace)
 
 
-	q := new(Parser)
+	q := new(Lexer)
 	q.token = LEFT
 	q.action = satisfyRune(isChar('c'))
 
-  r := new(Parser)
+  r := new(Lexer)
   r.token = 5 // Just for testing purposes
   r.action = matchString("Hello") // MatchString is no longer greedy!
 
-	t := new(Parser)
+	t := new(Lexer)
 	t.token = 0 // eof
 	t.action = matchNothing()
 
-	q.Chain(p).Chain(s).Chain(r)
+	plus_op := new(Lexer)
+	plus_op.token = 9 // Plus
+	plus_op.action = satisfyRune(isChar('+'))
 
-	root_list := q.Parse("c Hello World")
+	c := Operator(9)
+
+	c.Chain(q).Chain(p).Chain(plus_op).Chain(Optionally(s)).Chain(r)
+
+	root_list := q.Parse("c + Hello World")
 
 	for i := range root_list {
 		fmt.Println(root_list[i])
