@@ -69,9 +69,8 @@ func (token *Token) Add(children ...*Token) *Token {
 }
 
                           // []([]tokens, left_over)
-                         //  'cause nondeterministic
+                                      // 'cause nondeterministic
 func (self *Token) Compile(str string) ([][][]string) {
-
   if len(self.children) == 0 {
     if strings.HasPrefix(str, self.token) {
       return [][][]string{[][]string{[]string{self.token}, []string{str[len(self.token):]}}}
@@ -93,16 +92,22 @@ func (self *Token) Compile(str string) ([][][]string) {
       left_over := list_of_tokens_and_left_over[1][0]
 
       child_results := child.Compile(left_over)
+      //
+      // fmt.Println(child.token)
+      // fmt.Println(child_results)
 
+      LoopChildren:
       for _, child_result := range child_results {
         child_tokens := child_result[0]
         child_left_over := child_result[1][0]
 
         tokens_so_far := append(tokens, child_tokens...)
 
+
         switch child.action {
         case AND:
           if child_left_over != left_over { // Parsed!
+
             // If I have a token, replace the tokens with mine.
             var going_out_list [][]string
             if self.token != "" {
@@ -113,6 +118,7 @@ func (self *Token) Compile(str string) ([][][]string) {
             // This might fuck things up:
             output_list = [][][]string{going_out_list} //append(output_list, going_out_list)
           } else {
+            continue LoopChildren // Might have done it
             return [][][]string{[][]string{[]string{}, []string{str}}}
           } // I don't append anything here, because it didn't parse.
         case OR:
@@ -124,6 +130,7 @@ func (self *Token) Compile(str string) ([][][]string) {
             } else {
               going_out_list = child_result
             }
+
             // Might cause a bunch of duplicates...
             // Easily fixed, but harder to think about.
             output_list = append(output_list, going_out_list, list_of_tokens_and_left_over)
@@ -148,10 +155,10 @@ func main() {
 
   a := Tokenize("a")
   b := Tokenize("b")
-  c := Tokenize("c")
+  // c := Tokenize("c")
 
-  d := And(Optionally(a), b, c)
-  list_of_tokens := d.Compile("bc")
+  d := And(Optionally(a), Optionally(b))
+  list_of_tokens := d.Compile("abbc")
   fmt.Println(list_of_tokens)
 
   // // Aliases are built-in, when an upper-level operator w/ multiple children
