@@ -80,6 +80,7 @@ func NewAbstractParser(f func (string, *AbstractParser) []*TokenTree) *AbstractP
 	return c
 }
 
+// Doesn't work properly
 func Optionally(parser ParserLike) *AbstractParser {
 	return NewAbstractParser(func (str string, self *AbstractParser) []*TokenTree {
 		if parser.CanParse(str) {
@@ -90,6 +91,9 @@ func Optionally(parser ParserLike) *AbstractParser {
 		return self.next.Parse(str)
 	})
 }
+
+
+// Make an "Alias" Operator for grouping tokens.
 
 //// Compilers
 
@@ -343,6 +347,7 @@ func init() {
 }
 
 func main() {
+
 	var p *Lexer
 
 	p = new(Lexer)
@@ -358,9 +363,9 @@ func main() {
 	q.token = LEFT
 	q.action = satisfyRune(isChar('c'))
 
-  r := new(Lexer)
-  r.token = 5 // Just for testing purposes
-  r.action = matchString("Hello") // MatchString is no longer greedy!
+	r := new(Lexer)
+	r.token = 5 // Just for testing purposes
+	r.action = matchString("Hello") // MatchString is no longer greedy!
 
 	t := new(Lexer)
 	t.token = 0 // eof
@@ -370,14 +375,36 @@ func main() {
 	plus_op.token = 9 // Plus
 	plus_op.action = satisfyRune(isChar('+'))
 
-	c := Operator(9)
+	// c := Operator(9)
+	//
+	// c.Chain(q).Chain(p).Chain(plus_op).Chain(Optionally(s)).Chain(r)
+	//
+	// root_list := c.Parse("c +Hello World")
+	//
+	// for i := range root_list {
+	//   fmt.Println(root_list[i])
+	// }
 
-	c.Chain(q).Chain(p).Chain(plus_op).Chain(Optionally(s)).Chain(r)
 
-	root_list := c.Parse("c + Hello World")
 
-	for i := range root_list {
-		fmt.Println(root_list[i])
-	}
+	a = New(Lexer)
+	b = New(Lexer)
+	c = New(Lexer)
+
+
+	a.Chain(Many(b)).Chain(c) // => ab+c OR => ab*c
+	a.Chain(Many(b.Chain(c))) // => a(bc)+ OR => a(bc)* idc which, I just need one.
 
 }
+
+
+// Absolute Must-haves on the Parser level:
+
+// OneOf(...)
+// Optionally(...)
+// Many(...)
+//
+
+// In order to do this, the AbstractParser is not helping me.
+// I need to be able to redefine the other functions too.
+// Not just Parse.
