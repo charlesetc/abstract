@@ -1,410 +1,179 @@
+
 package main
 
 import (
-	"fmt"
-	"unicode/utf8"
-	"bytes"
-	"strings"
-	"errors"
-	"strconv"
+  "strings"
+  "fmt"
 )
 
-type Token int
+type Action int
 
 const (
-	OPERATOR Token = ((iota + 1) * -1)
-	LEFT_SIDE
-	RIGHT_SIDE
+  NONE Action = iota
+  AND
+  OR
+  MANY
 )
 
-type Result struct {
-	value string
-	left_over string
+type Token struct {
+  token string
+  action Action
+  children []*Token
 }
 
-type TokenValue struct {
-	value string
-	token Token
+func Base() *Token {
+  tok := new(Token)
+  tok.action = NONE
+  tok.children = []*Token{}
+  tok.token = ""
+  // DOES NOT HAVE A TOKEN.
+  return tok
 }
 
-
-type TokenTree struct {
-	TokenValue
-	branches []*TokenTree
+func Tokenize(str string) *Token {
+  tok := new(Token)
+  tok.token = str
+  tok.action = NONE
+  tok.children = []*Token{}
+  return tok
 }
 
-
-type ParserLike interface {
-	CanParse(string) bool
-	Parse(string) []*TokenTree
-	Chain(ParserLike) ParserLike
-}
-
-type Lexer struct {
-	token  Token
-	action func(string) ([]*Result)
-	next   ParserLike
-}
-
-
-//// AbstractParsers
-
-type AbstractParser struct {
-	parse_action func(string, *AbstractParser) []*TokenTree
-	next ParserLike
-}
-
-// I think compilers should be transparent to other compilers
-// when it comes to whether or not they'll work.
-func (self *AbstractParser) CanParse(str string) bool {
-	return self.next.CanParse(str) // Is this right?
-}
-
-func (self *AbstractParser) Parse(str string) []*TokenTree {
-	return self.parse_action(str, self)
+func And(tokens ...*Token) *Token {
+  tok := Base()
+  tok.action = AND
+  tok.children = tokens
+  return tok
 }
 
 
-func (self *AbstractParser) Chain(other ParserLike) ParserLike {
-	if self.next == nil {
-		self.next = other
-	} else {
-		self.next.Chain(other)
-	}
-	return other // faster for chaining.
-}
-
-func NewAbstractParser(f func (string, *AbstractParser) []*TokenTree) *AbstractParser {
-	c := new(AbstractParser)
-	c.parse_action = f
-	return c
-}
-
-// Doesn't work properly
-func Optionally(parser ParserLike) *AbstractParser {
-	return NewAbstractParser(func (str string, self *AbstractParser) []*TokenTree {
-		if parser.CanParse(str) {
-			parser.Chain(self.next) // obvs
-			return parser.Parse(str)
-		}
-		// Else can't parse
-		return self.next.Parse(str)
-	})
+// MAYBE MAKE NEW ONES INSTEAD?
+func Many(token *Token) *Token {
+  token.action = MANY
+  return token
 }
 
 
-// Make an "Alias" Operator for grouping tokens.
-
-//// Compilers
-
-// Compilers just deal with the tokens and the syntax tree.
-
-func NewCompiler(f func ([]*TokenTree) []*TokenTree) *AbstractParser {
-	return NewAbstractParser(func (str string, self *AbstractParser) []*TokenTree {
-		roots := self.next.Parse(str) // Basically just wraps the function.
-		return f(roots)								// Not sure if it's worth it, but whatever
-	})
+func Optionally(token *Token) *Token {
+  base := Base()
+  base.action = OR
+  base.children = append(base.children, token)
+  return base
 }
 
-func Operator(token Token) *AbstractParser {
-	return NewCompiler(func (roots []*TokenTree) []*TokenTree {
-		for _, root := range roots {
-			root.Traverse(func (child *TokenTree, parent *TokenTree, index int) {
-				if child.token != token {
-					return
-				}
-				left := NewTokenTree("", LEFT) // Left and right are fill-ins for other things
-				right := NewTokenTree("", RIGHT)  			// I guess?
-				left.branches = append(left.branches, parent.branches[:index]...)
-				right.branches = append(right.branches, parent.branches[index+1:]...)
+                          // []([]tokens, left_over)
+                          // 'cause nondeterministic
+func (self *Token) Compile(str string) ([][][]string) {
+  if len(self.children) == 0 {
+    if strings.HasPrefix(str, self.token) {
+      return [][][]string{[][]string{[]string{self.token}, []string{str[len(self.token):]}}}
+    } // Otherwise: Failed to parse: keep going with just str
+    return [][][]string{[][]string{[]string{}, []string{str}}}
+  } // Otherwise: there are children
 
-				// Make the parent the child... it will make sense
-				parent.TokenValue = child.TokenValue
-				parent.branches = []*TokenTree{left, right}
-			}, nil, 0) // The zero is never used.
-		}
-		return roots // for chaining
-	})
-}
+  // By convention, the [][]string is always 2 long
+  // and the second parameter is always 1 long.
+  current_list := [][][]string{[][]string{[]string{}, []string{str}}}
+  output_list := [][][]string{} // add to this and then make it the current_list
 
-//// Token Trees
+  for _, child := range self.children {
+    for _, list_of_tokens_and_left_over := range current_list {
 
-func (self Token) String() string {
-	return strconv.Itoa(int(self))
-}
+      tokens := list_of_tokens_and_left_over[0]
+      left_over := list_of_tokens_and_left_over[1][0]
 
-func NewTokenTree(value string, token Token) *TokenTree {
-	toktree := new(TokenTree)
-	toktree.value = value
-	toktree.token = token
-	toktree.branches = make([]*TokenTree, 0)
-	return toktree
-}
+      child_results := child.Compile(left_over)
 
-func (self *TokenTree) Traverse(f func(*TokenTree, *TokenTree, int), parent *TokenTree, the_index int)  {
-	for index, child := range self.branches {
-		child.Traverse(f, self, index) // #depthfirstsearch #bottomup?
-	}
-	// It's called with a nil parent.
-	if parent != nil {
-		f(self, parent, the_index)
-	}
-}
+      if self.action == OR {
+        output_list = append(output_list, list_of_tokens_and_left_over)
+      }
 
-// func (self *TokenTree) Tree() *TokenTree {
-// 	tree := new(TokenTree)
-// 	tree.branches = self.branches
-// 	return tree
-// }
+      for _, child_result := range child_results {
+        child_tokens := child_result[0]
+        child_left_over := child_result[1][0]
 
+        tokens_so_far := append(tokens, child_tokens...)
+        parsed := child_left_over != left_over
 
-func (self *TokenTree) String() string {
-	var buffer bytes.Buffer
+        switch self.action {
+        case AND, OR:
+          if parsed {
+            output_list = append(output_)
+          }
+        case MANY:
+        // case XOR:}
+          // Do later
+        default:
+          panic(self.action)
+          // This should not happen.
+        }
 
-	buffer.WriteString("'")
-	buffer.WriteString(self.value)
-	buffer.WriteString("'")
-	buffer.WriteString("[")
-	buffer.WriteString(self.token.String())
-	buffer.WriteString("]")
-
-	buffer.WriteString("(")
-	for i, tree := range self.branches {
-		if i != 0 {
-			buffer.WriteString(" ")
-		}
-		buffer.WriteString(tree.String())
-	}
-	buffer.WriteString(")")
-
-	return buffer.String()
-}
-//
-// func (self *TokenTree) String() string {
-// 	var buffer bytes.Buffer
-//
-// 	buffer.WriteString("TokenTree (")
-// 	for i := range self.branches {
-// 		if i != 0 {
-// 			buffer.WriteString(" ")
-// 		}
-// 		buffer.WriteString(self.branches[i].String())
-// 	}
-// 	buffer.WriteString(")")
-//
-// 	return buffer.String()
-// }
-
-//// Lexers
-
-func (self *Lexer) tokenize(results []*Result) ([]*TokenTree, error) {
-	outputs := make([]*TokenTree, len(results))
-	for i, result := range results {
-		outputs[i] = new(TokenTree)
-		outputs[i].branches = []*TokenTree{NewTokenTree(result.value, self.token)}
-	}
-	var err error
-	if len(results) == 0 {
-		err = errors.New("Did not parse token " + self.token.String())
-	} else {
-		err = nil
-	}
-	return outputs, err
-}
-
-func (self *Lexer) retokenize(root_list []*TokenTree, value string) []*TokenTree {
-	for i := range root_list {
-		if len(value) > 0 { // Empty strings can be parsed, sure, but they shouldn't be added here.
-			root_list[i].branches = append(root_list[i].branches, NewTokenTree(value, self.token))
-		}
-	}
-	return root_list
-}
-
-func (self *Lexer) CanParse(str string) (val bool) {
-	result_list := self.action(str)
-	val = len(result_list) > 0
-	if self.next != nil {
-		val = val && self.next.CanParse(str) // Get the entire chain!
-	}
-	return
-}
-
-func (self *Lexer) Parse(str string) []*TokenTree {
-	parent_results := self.action(str)
-	if self.next != nil {
-		outputs := make([]*TokenTree, 0)
-		for _, a_result := range parent_results {
-				child_results := self.next.Parse(a_result.left_over)
-			// I think this append will work, but I'm not entirely sure.
-			outputs = append(outputs, self.retokenize(child_results, a_result.value)...)
-		}
-		return outputs
-	}
-	root_list, _ := self.tokenize(parent_results)
-	return root_list
-}
-
-func (self *Lexer) Chain(other ParserLike) ParserLike {
-	if self.next == nil {
-		self.next = other
-	} else {
-		self.next.Chain(other)
-	}
-	return other // faster for chaining.
-}
-
-
-//////////////////////////////////////////////
-
-//// Functional Parsing
-
-const (
-	EOF = iota
-	LEFT
-	RIGHT
-	SPACE
-	NUMBER
-)
-
-var eof rune
-
-// Wraps a string -> []string, []string function
-// and adds the original string to the left_overs
-func optionally(f func(string) []*Result) func(string) []*Result  {
-  return func (s string) []*Result {
-    results := f(s)
-    return append(results, &Result{value: "", left_over: s})
+      }
+    }
+    current_list = output_list
   }
-}
-
-func matchString(string_a string) func(string) []*Result {
-  return satisfyString(func (string_b string) (string, error) {
-    if strings.HasPrefix(string_b, string_a) {
-      return string_a, nil
-    }
-		err := "String " + string_a + " did not start with " + string_b + "."
-    return "", errors.New(err)
-  })
-}
-
-func matchNothing() func(string) []*Result {
-	return satisfyString(func (string_b string) (string, error) {
-		return "", errors.New("Never Satisfied. Never Graduate")
-	})
-}
-
-func satisfyString(f func(string) (string, error)) func(string) []*Result {
-	return func(str string) []*Result {
-		parsed_string, err := f(str)
-		if err == nil {
-			// Satisfied
-			return []*Result{&Result{left_over: str[len([]rune(parsed_string)):], value: parsed_string}}
-		}
-    return []*Result{} // Did not parse; return empty Result list
-	}
-}
-
-func satisfyRune(f func(rune) bool) func(string) []*Result {
-	return satisfyString(func(s string) (string, error) {
-    c, _ := utf8.DecodeRuneInString(s)
-    if f(c) {
-      return string(c), nil
-    } else {
-      return "", errors.New("Rune was not satisfied")
-    }
-	})
-}
-
-func isSpace(c rune) bool {
-	return c == ' ' || c == '\t' || c == '\n'
-}
-
-func isChar(a rune) func(rune) bool {
-	return func(c rune) bool {
-		return c == a
-	}
-}
-
-////
-// Debugging
-
-func debug_function() func() {
-	a := 'a'
-	return func() {
-		fmt.Printf("%c\n", a)
-		a++
-	}
-}
-
-////
-
-var a func()
-
-func init() {
-	eof = rune(0)
-	a = debug_function()
+  // There will be at least one child.
+  return output_list
 }
 
 func main() {
 
-	var p *Lexer
+  // a := Tokenize("a")
+  // b := Tokenize("b")
+  c := Tokenize("c")
 
-	p = new(Lexer)
-	p.token = SPACE
-	p.action = satisfyRune(isSpace)
-
-	s := new(Lexer)
-	s.token = SPACE
-	s.action = satisfyRune(isSpace)
+  d := And(c, c)
+  // d := And(a, b, c)
+  // d := And(a, Optionally(And(b, c)), b)
 
 
-	q := new(Lexer)
-	q.token = LEFT
-	q.action = satisfyRune(isChar('c'))
+  list_of_tokens := d.Compile("cac")
+  fmt.Println(list_of_tokens)
 
-	r := new(Lexer)
-	r.token = 5 // Just for testing purposes
-	r.action = matchString("Hello") // MatchString is no longer greedy!
+  // // Aliases are built-in, when an upper-level operator w/ multiple children
+  // if their token is nil.
 
-	t := new(Lexer)
-	t.token = 0 // eof
-	t.action = matchNothing()
-
-	plus_op := new(Lexer)
-	plus_op.token = 9 // Plus
-	plus_op.action = satisfyRune(isChar('+'))
-
-	// c := Operator(9)
-	//
-	// c.Chain(q).Chain(p).Chain(plus_op).Chain(Optionally(s)).Chain(r)
-	//
-	// root_list := c.Parse("c +Hello World")
-	//
-	// for i := range root_list {
-	//   fmt.Println(root_list[i])
-	// }
-
-
-
-	a = New(Lexer)
-	b = New(Lexer)
-	c = New(Lexer)
-
-
-	a.Chain(Many(b)).Chain(c) // => ab+c OR => ab*c
-	a.Chain(Many(b.Chain(c))) // => a(bc)+ OR => a(bc)* idc which, I just need one.
+  // I also need a "XOR/OneOf" function.
 
 }
 
 
-// Absolute Must-haves on the Parser level:
 
-// OneOf(...)
-// Optionally(...)
-// Many(...)
+// // And
+// if child_left_over != left_over { // Parsed!
 //
+//   // If I have a token, replace the tokens with mine.
+//   var going_out_list [][]string
+//   if self.token != "" {
+//     going_out_list = [][]string{append(tokens_so_far, self.token), []string{child_left_over}}
+//   } else {
+//     going_out_list = [][]string{tokens_so_far, []string{child_left_over}}
+//   }
+//   // This might fuck things up:
+//   output_list = [][][]string{going_out_list} //append(output_list, going_out_list)
+// } else {
+//
+//   // continue LoopChildren // Might have done it
+//   return [][][]string{[][]string{[]string{}, []string{str}}}
+// } // I don't append anything here, because it didn't parse.
 
-// In order to do this, the AbstractParser is not helping me.
-// I need to be able to redefine the other functions too.
-// Not just Parse.
+
+          // // OR
+          // if child_left_over != left_over { // Parsed!
+          //   // If I have a token, replace the tokens with mine.
+          //   var going_out_list [][]string
+          //   if self.token != "" {
+          //     going_out_list = [][]string{append(tokens_so_far, self.token), []string{child_left_over}}
+          //   } else {
+          //     going_out_list = [][]string{tokens_so_far, []string{child_left_over}}
+          //   }
+          //
+          //   // Might cause a bunch of duplicates...
+          //   // Easily fixed, but harder to think about.
+          //   output_list = append(output_list, going_out_list, list_of_tokens_and_left_over)
+          //   fmt.Print("yes -- ")
+          //   fmt.Println(child_left_over)
+          // } else {
+          //   fmt.Print("no --")
+          //   fmt.Println(left_over)
+          //   output_list = append(output_list, list_of_tokens_and_left_over)
+          // }
