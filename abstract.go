@@ -109,8 +109,12 @@ func NewToken(str string) *Token {
 
 func (self *Lexer) Compile(str string) ([]*Result) {
   if len(self.children) == 0 {
-    if strings.HasPrefix(str, self.token) {
+    s := string(append([]byte(str), 0))
+    if strings.HasPrefix(s, self.token) {
       // Return one result that has this token and the rest of the string.
+      if self.token == string([]byte{0}) {
+        return SingleResult([]*Token{NewToken(self.token)},str)
+      }
       return SingleResult([]*Token{NewToken(self.token)}, str[len(self.token):])
     }
     return []*Result{}
@@ -283,3 +287,5 @@ var Upper *Lexer =  OneOf(
 
 var Alpha *Lexer =  OneOf(Upper, Lower)
 var Alphanumeric *Lexer = OneOf(Alpha, Digit)
+
+var EOF *Lexer = Lex(string([]byte{0}))
