@@ -16,81 +16,97 @@ const (
   MANY
 )
 
+type Token struct {
+  name string
+  value string
+}
+
 type Result struct {
-  tokens []string
+  tokens []*Token
   left_over string
 }
 
-type Token struct {
+type Lexer struct {
   token string
   action Action
-  children []*Token
+  children []*Lexer
 }
 
-func Base() *Token {
-  tok := new(Token)
+func Base() *Lexer {
+  tok := new(Lexer)
   tok.action = NONE
-  tok.children = []*Token{}
+  tok.children = []*Lexer{}
   tok.token = ""
   // DOES NOT HAVE A TOKEN.
   return tok
 }
 
-func Tokenize(str string) *Token {
-  tok := new(Token)
+func Lex(str string) *Lexer {
+  tok := new(Lexer)
   tok.token = str
   tok.action = NONE
-  tok.children = []*Token{}
+  tok.children = []*Lexer{}
   return tok
 }
 
-func And(tokens ...*Token) *Token {
+func And(tokens ...*Lexer) *Lexer {
   base := Base()
   base.action = AND
   base.children = tokens
   return base
 }
 
-func OneOf(tokens ...*Token) *Token {
+func OneOf(tokens ...*Lexer) *Lexer {
   base := Base()
   base.action = XOR
   base.children = tokens
   return base
 }
 
-func Many(token *Token) *Token {
+func Many(token *Lexer) *Lexer {
   base := Base()
   base.action = MANY
   base.children = append(base.children, token)
   return base
 }
 
-func Maybe(token *Token) *Token {
+func Maybe(token *Lexer) *Lexer {
   base := Base()
   base.action = OR    // more efficient than making a new list.
   base.children = append(base.children, token)
   return base
 }
 
-func SingleResult(toks []string, left_over string) []*Result {
+func Alias(token *Lexer, str string) *Lexer {
+  base := Base()
+  base.action = NONE // don't know what this will do
+  base.children = append(base.children, token)
+  base.token = str
+  return base
+}
+
+func SingleResult(toks []*Token, left_over string) []*Result {
   return []*Result{&Result{tokens: toks, left_over: left_over}}
+}
+
+func NewToken(str string) *Token {
+  return &Token{str, str}
 }
 
 
 
-
-func (self *Token) Compile(str string) ([]*Result) {
+func (self *Lexer) Compile(str string) ([]*Result) {
   if len(self.children) == 0 {
     if strings.HasPrefix(str, self.token) {
       // Return one result that has this token and the rest of the string.
-      return SingleResult([]string{self.token}, str[len(self.token):])
+      return SingleResult([]*Token{NewToken(self.token)}, str[len(self.token):])
     }
     return []*Result{}
   }
 
   // Otherwise there are children:
 
-  current_list := SingleResult([]string{}, str)
+  current_list := SingleResult([]*Token{}, str)
 
   xor_list := []*Result{}
 
@@ -106,7 +122,17 @@ func (self *Token) Compile(str string) ([]*Result) {
 
       child_results := child.Compile(result.left_over)
       for _, res := range child_results {
-        res.tokens = append(result.tokens, res.tokens...)
+        var the_tokens []*Token
+        if self.token != "" {
+          value := ""
+          for _, tok := range res.tokens {
+            value = value + tok.value
+          }
+          the_tokens = []*Token{&Token{self.token, value}}
+        } else {
+          the_tokens = res.tokens
+        }
+        res.tokens = append(result.tokens, the_tokens...)
       }
       output_list = append(output_list, child_results...)
 
@@ -114,7 +140,7 @@ func (self *Token) Compile(str string) ([]*Result) {
 
     switch self.action {
     case OR:
-      output_list = append(output_list, &Result{[]string{}, str})
+      output_list = append(output_list, &Result{[]*Token{}, str})
     case AND:
       if len(output_list) == 0 {
         return []*Result{}
@@ -155,11 +181,13 @@ func PrintResults(results []*Result) {
   for _, res := range results {
     fmt.Print(" (")
 
-    for i, str := range res.tokens {
+    for i, tok := range res.tokens {
       if i != 0 {
         fmt.Print(" ")
       }
-      fmt.Print(str)
+      fmt.Print(tok.name)
+      fmt.Print(":")
+      fmt.Print(tok.value)
     }
     fmt.Print(")")
     fmt.Print(res.left_over)
@@ -170,10 +198,10 @@ func PrintResults(results []*Result) {
 
 
 func main() {
-  a := Tokenize("a")
-  c := Tokenize("c")
-  // b := Tokenize("b")
-  d := OneOf(c, Maybe(And(c, a)))
+  a := Lex("a")
+  c := Lex("c")
+  // b := Lex("b")
+  d := OneOf(c, Maybe(Alias(And(c, a), "wow")))
   list_of_tokens := d.Compile("cabcb")
   PrintResults(list_of_tokens)
 }
