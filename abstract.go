@@ -240,7 +240,6 @@ func PrintResults(results []*Result) {
   fmt.Println("]")
 }
 
-
 func main() {
   // a := Lex("a")
   // c := Lex("c")
@@ -252,5 +251,35 @@ func main() {
 
   results := float.Compile("13.20")
   PrintResults(results)
-  // PrintResults(results)
 }
+
+
+// I am aware how ugly this is.
+var Digit *Lexer =  OneOf(Lex("0"),
+                    Lex("1"), Lex("2"), Lex("3"),
+                    Lex("4"), Lex("5"), Lex("6"),
+                    Lex("7"), Lex("8"), Lex("9"))
+var Lower *Lexer =  OneOf(
+                    Lex("a"), Lex("b"), Lex("c"),
+                    Lex("d"), Lex("e"), Lex("f"),
+                    Lex("g"), Lex("h"), Lex("i"),
+                    Lex("j"), Lex("k"), Lex("l"),
+                    Lex("m"), Lex("n"), Lex("o"),
+                    Lex("p"), Lex("q"), Lex("r"),
+                    Lex("s"), Lex("t"), Lex("u"),
+                    Lex("v"), Lex("w"), Lex("x"),
+                    Lex("y"), Lex("z"))
+
+var Upper *Lexer =  OneOf(
+                    Lex("A"), Lex("B"), Lex("C"),
+                    Lex("D"), Lex("E"), Lex("F"),
+                    Lex("G"), Lex("H"), Lex("I"),
+                    Lex("J"), Lex("K"), Lex("L"),
+                    Lex("M"), Lex("N"), Lex("O"),
+                    Lex("P"), Lex("Q"), Lex("R"),
+                    Lex("S"), Lex("T"), Lex("U"),
+                    Lex("V"), Lex("W"), Lex("X"),
+                    Lex("Y"), Lex("Z"))
+
+var Alpha *Lexer =  OneOf(Upper, Lower)
+var Alphanumeric *Lexer = OneOf(Alpha, Digit)
