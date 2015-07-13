@@ -86,6 +86,9 @@ func (self *Token) Compile(str string) ([]*Result) {
 
   for _, child := range self.children {
 
+    many_list := []*Result{}
+
+    ThisChild:
     output_list := []*Result{}
 
     for _, result := range current_list {
@@ -106,6 +109,14 @@ func (self *Token) Compile(str string) ([]*Result) {
         return []*Result{}
         // Essentially, don't go on to the remaining children.
       }
+    case MANY:
+      if len(output_list) == 0 {
+        output_list = many_list
+        break
+      } // Otherwise:
+      many_list = append(many_list, output_list...)
+      current_list = output_list
+      goto ThisChild
     }
 
     current_list = output_list
@@ -135,10 +146,10 @@ func PrintResults(results []*Result) {
 
 
 func main() {
-
+  // a := Tokenize("a")
   c := Tokenize("c")
   b := Tokenize("b")
-  d := And(c, Optionally(b), Optionally(And(c, b)))
-  list_of_tokens := d.Compile("cbcb")
+  d := Many(And(c, Optionally(b)))
+  list_of_tokens := d.Compile("cbcbcb")
   PrintResults(list_of_tokens)
 }
