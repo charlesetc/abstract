@@ -1,5 +1,5 @@
 
-package main
+package abstract
 
 import (
   "strings"
@@ -15,6 +15,7 @@ const (
   XOR
   MANY
   MUNCH
+  NMANY
 )
 
 type Token struct {
@@ -30,6 +31,8 @@ type Result struct {
 type Lexer struct {
   token string
   action Action
+  to int // Only used for nmany
+  from int // Only used for nmany
   children []*Lexer
 }
 
@@ -71,6 +74,26 @@ func Many(token *Lexer) *Lexer {
   return base
 }
 
+func NMany(token *Lexer, numbers... int) *Lexer {
+  var from, to int
+  switch len(numbers) {
+  case 1:
+    from = 0
+    to = numbers[0]
+  case 2:
+    from = numbers[0] + 1
+    to = numbers[1]
+  default:
+    panic("NMany requires (1..2) numbers after the lexer.\nExample: NMany(myLexer, 4, 0) // Between 0 to 4")
+  }
+  base := Base()
+  base.action = NMANY
+  base.to = to
+  base.from = from
+  base.children = append(base.children, token)
+  return base
+}
+
 func Munch(token *Lexer) *Lexer {
   base := Base()
   base.action = MUNCH
@@ -97,14 +120,13 @@ func (self *Lexer) Alias(str string) *Lexer {
   return Alias(self, str)
 }
 
-func SingleResult(toks []*Token, left_over string) []*Result {
+func singleResult(toks []*Token, left_over string) []*Result {
   return []*Result{&Result{tokens: toks, left_over: left_over}}
 }
 
-func NewToken(str string) *Token {
+func newToken(str string) *Token {
   return &Token{str, str}
 }
-
 
 
 func (self *Lexer) Compile(str string) ([]*Result) {
@@ -113,16 +135,16 @@ func (self *Lexer) Compile(str string) ([]*Result) {
     if strings.HasPrefix(s, self.token) {
       // Return one result that has this token and the rest of the string.
       if self.token == string([]byte{0}) {
-        return SingleResult([]*Token{NewToken(self.token)},str)
+        return singleResult([]*Token{newToken(self.token)},str)
       }
-      return SingleResult([]*Token{NewToken(self.token)}, str[len(self.token):])
+      return singleResult([]*Token{newToken(self.token)}, str[len(self.token):])
     }
     return []*Result{}
   }
 
   // Otherwise there are children:
 
-  current_list := SingleResult([]*Token{}, str)
+  current_list := singleResult([]*Token{}, str)
 
   xor_list := []*Result{}
 
@@ -130,6 +152,7 @@ func (self *Lexer) Compile(str string) ([]*Result) {
   for _, child := range self.children {
 
     many_list := []*Result{}
+    many_count := 1
 
     ThisChild:
     output_list := []*Result{}
@@ -162,12 +185,17 @@ func (self *Lexer) Compile(str string) ([]*Result) {
         return []*Result{}
         // Essentially, don't go on to the remaining children.
       }
-    case MANY:
-      if len(output_list) == 0 {
+    case NMANY, MANY:
+      if len(output_list) == 0 || (self.action == NMANY && many_count > self.to) {
+        if self.action == NMANY && many_count < self.from {
+          output_list = []*Result{}
+          break
+        }
         output_list = many_list
         break
       } // Otherwise:
       many_list = append(many_list, output_list...)
+      many_count++
       current_list = output_list
       goto ThisChild
     case XOR:
@@ -217,6 +245,12 @@ func (l *Lexer) MustCompile(str string) *Result {
   }
 }
 
+func (l *Lexer) Match(str string) bool {
+  return len(l.Compile(str)) > 0
+}
+
+
+
 func PrintResult(res *Result, answers...bool)  {
   fmt.Print("(")
 
@@ -244,18 +278,15 @@ func PrintResults(results []*Result) {
   fmt.Println("]")
 }
 
-func main() {
-  // a := Lex("a")
-  // c := Lex("c")
-  // // b := Lex("b")
-  // d := OneOf(c, Maybe(Alias(And(c, a), "wow")))
-  digit := OneOf(Lex("1"), Lex("2"), Lex("3"), Lex("4"), Lex("5"), Lex("6"), Lex("7"), Lex("8"), Lex("9"), Lex("0"))
-  integer := Alias(Munch(digit), "int")
-  float := And(integer, Maybe(And(Lex("."), integer)))
-
-  results := float.Compile("13.20")
-  PrintResults(results)
-}
+// Example:
+// func main() {
+//   digit := OneOf(Lex("1"), Lex("2"), Lex("3"), Lex("4"), Lex("5"), Lex("6"), Lex("7"), Lex("8"), Lex("9"), Lex("0"))
+//   integer := Alias(Munch(digit), "int")
+//   float := And(integer, Maybe(And(Lex("."), integer)))
+//
+//   results := float.Compile("13.20")
+//   PrintResults(results)
+// }
 
 
 // I am aware how ugly this is.
@@ -273,7 +304,6 @@ var Lower *Lexer =  OneOf(
                     Lex("s"), Lex("t"), Lex("u"),
                     Lex("v"), Lex("w"), Lex("x"),
                     Lex("y"), Lex("z"))
-
 var Upper *Lexer =  OneOf(
                     Lex("A"), Lex("B"), Lex("C"),
                     Lex("D"), Lex("E"), Lex("F"),
@@ -284,8 +314,6 @@ var Upper *Lexer =  OneOf(
                     Lex("S"), Lex("T"), Lex("U"),
                     Lex("V"), Lex("W"), Lex("X"),
                     Lex("Y"), Lex("Z"))
-
 var Alpha *Lexer =  OneOf(Upper, Lower)
 var Alphanumeric *Lexer = OneOf(Alpha, Digit)
-
-var EOF *Lexer = Lex(string([]byte{0}))
+var Eof *Lexer = Lex(string([]byte{0}))
