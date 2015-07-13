@@ -16,20 +16,22 @@ func init()  {
 func TestAnd(t *testing.T)  {
   // Most basic test.
   lexer := And(a, b)
-  result := lexer.MustCompile("ab")
+  result := lexer.MustCompile("abc")
   if !CompareTokens(result.tokens, []string{"a", "b"}) {
     t.Error("Basic AND functionality")
   }
 
   // Multple Parameters
   lexer = And(a, b, c)
+  results := lexer.Compile("abc")
+  PrintResults(results)
   result = lexer.MustCompile("abc")
   if !CompareTokens(result.tokens, []string{"a", "b", "c"}) {
     t.Error("AND with multiple parameters")
   }
 
   // And doesn't parse
-  results := lexer.Compile("abd")
+  results = lexer.Compile("abd")
   if len(results) != 0 {
     t.Error("AND gives false positive")
   }
@@ -37,13 +39,14 @@ func TestAnd(t *testing.T)  {
 
 func TestOr(t *testing.T) {
   lexer := Maybe(a)
-  results := lexer.Compile("ab")
+  results := lexer.Compile("abd")
   if len(results) < 2 {
     t.Error("Maybe returns too few possible tracks")
   } else if len(results) > 2 {
     t.Error("Maybe returns too many possible tracks")
   }
-
+  result := lexer.MustCompile ("aab")
+  
   str1 := "abc"
   str2 := "ac"
   lexer = And(a, Maybe(b), c)
@@ -55,7 +58,7 @@ func TestOr(t *testing.T) {
   if len(results) != 1 {
     t.Error("There's a problem with Maybe")
   }
-  result := lexer.MustCompile(str1)
+  result = lexer.MustCompile(str1)
   if !CompareTokens(result.tokens, []string{"a", "b", "c"}) {
     t.Error("Maybe gives wrong tokens")
   }
@@ -90,6 +93,10 @@ func TestMany(t *testing.T) {
   results = lexer.Compile("aaa")
   if len(results) != 3 {
     t.Error("Many doesn't parse correctly")
+  }
+  result := lexer.MustCompile("aaa")
+  if len(result.tokens) != 3 {
+    t.Error("Terrible algorithm here.")
   }
 }
 
@@ -135,8 +142,8 @@ func TestMunch(t *testing.T) {
 }
 
 func TestLexicalIntegration(t *testing.T)  {
-  period := Lex(".")
-  at := Lex("@")
+  period := Lex(".").Alias("period")
+  at := Alias(Lex("@"), "atsign")
   alphahyphen := OneOf(Alphanumeric, Lex("-"))
   punct :=  OneOf(
             Lex("!"),
