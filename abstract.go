@@ -12,6 +12,7 @@ const (
   NONE Action = iota
   AND
   OR
+  XOR
   MANY
 )
 
@@ -50,6 +51,13 @@ func And(tokens ...*Token) *Token {
   return base
 }
 
+func OneOf(tokens ...*Token) *Token {
+  base := Base()
+  base.action = XOR
+  base.children = tokens
+  return base
+}
+
 func Many(token *Token) *Token {
   base := Base()
   base.action = MANY
@@ -57,7 +65,7 @@ func Many(token *Token) *Token {
   return base
 }
 
-func Optionally(token *Token) *Token {
+func Maybe(token *Token) *Token {
   base := Base()
   base.action = OR    // more efficient than making a new list.
   base.children = append(base.children, token)
@@ -84,6 +92,9 @@ func (self *Token) Compile(str string) ([]*Result) {
 
   current_list := SingleResult([]string{}, str)
 
+  xor_list := []*Result{}
+
+  NextChild:
   for _, child := range self.children {
 
     many_list := []*Result{}
@@ -117,9 +128,22 @@ func (self *Token) Compile(str string) ([]*Result) {
       many_list = append(many_list, output_list...)
       current_list = output_list
       goto ThisChild
+    case XOR:
+      if len(output_list) == 0 {
+        continue NextChild
+      } else {
+        xor_list = append(xor_list, output_list...)
+        continue NextChild
+      }
     }
 
-    current_list = output_list
+    if self.action != XOR {
+      current_list = output_list
+    }
+  }
+
+  if self.action == XOR {
+    return xor_list
   }
 
   return current_list
@@ -146,10 +170,10 @@ func PrintResults(results []*Result) {
 
 
 func main() {
-  // a := Tokenize("a")
+  a := Tokenize("a")
   c := Tokenize("c")
-  b := Tokenize("b")
-  d := Many(And(c, Optionally(b)))
-  list_of_tokens := d.Compile("cbcbcb")
+  // b := Tokenize("b")
+  d := OneOf(c, Maybe(And(c, a)))
+  list_of_tokens := d.Compile("cabcb")
   PrintResults(list_of_tokens)
 }
