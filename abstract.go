@@ -14,6 +14,7 @@ const (
   OR
   XOR
   MANY
+  MUNCH
 )
 
 type Token struct {
@@ -70,6 +71,13 @@ func Many(token *Lexer) *Lexer {
   return base
 }
 
+func Munch(token *Lexer) *Lexer {
+  base := Base()
+  base.action = MUNCH
+  base.children = append(base.children, token)
+  return base
+}
+
 func Maybe(token *Lexer) *Lexer {
   base := Base()
   base.action = OR    // more efficient than making a new list.
@@ -83,6 +91,10 @@ func Alias(token *Lexer, str string) *Lexer {
   base.children = append(base.children, token)
   base.token = str
   return base
+}
+
+func (self *Lexer) Alias(str string) *Lexer {
+  return Alias(self, str)
 }
 
 func SingleResult(toks []*Token, left_over string) []*Result {
@@ -161,6 +173,14 @@ func (self *Lexer) Compile(str string) ([]*Result) {
         xor_list = append(xor_list, output_list...)
         continue NextChild
       }
+    case MUNCH:
+      if len(output_list) == 0 {
+        output_list = many_list
+        break
+      } // Otherwise:
+      many_list = output_list // Basically save the last one.
+      current_list = output_list
+      goto ThisChild
     }
 
     if self.action != XOR {
@@ -175,33 +195,62 @@ func (self *Lexer) Compile(str string) ([]*Result) {
   return current_list
 }
 
+func (l *Lexer) MustCompile(str string) *Result {
+  results := l.Compile(str)
+  switch len(results) {
+  case 0:
+    panic("Lexer did not compile.")
+  case 1:
+    return results[0]
+  default:
+    for _, res := range results {
+      if res.left_over == "" {
+        return res
+      }
+    }
+    return results[1]
+    // Not a very smart algorithm.
+  }
+}
+
+func PrintResult(res *Result, answers...bool)  {
+  fmt.Print("(")
+
+  for i, tok := range res.tokens {
+    if i != 0 {
+      fmt.Print(" ")
+    }
+    fmt.Print(tok.name)
+    fmt.Print(":")
+    fmt.Print(tok.value)
+  }
+  fmt.Print(")")
+  fmt.Print(res.left_over)
+  fmt.Print(" ")
+  if len(answers) == 0 {
+    fmt.Println()
+  }
+}
 
 func PrintResults(results []*Result) {
-  fmt.Print("[")
+  fmt.Println("[")
   for _, res := range results {
-    fmt.Print(" (")
-
-    for i, tok := range res.tokens {
-      if i != 0 {
-        fmt.Print(" ")
-      }
-      fmt.Print(tok.name)
-      fmt.Print(":")
-      fmt.Print(tok.value)
-    }
-    fmt.Print(")")
-    fmt.Print(res.left_over)
-    fmt.Print(" ")
+    PrintResult(res)
   }
   fmt.Println("]")
 }
 
 
 func main() {
-  a := Lex("a")
-  c := Lex("c")
-  // b := Lex("b")
-  d := OneOf(c, Maybe(Alias(And(c, a), "wow")))
-  list_of_tokens := d.Compile("cabcb")
-  PrintResults(list_of_tokens)
+  // a := Lex("a")
+  // c := Lex("c")
+  // // b := Lex("b")
+  // d := OneOf(c, Maybe(Alias(And(c, a), "wow")))
+  digit := OneOf(Lex("1"), Lex("2"), Lex("3"), Lex("4"), Lex("5"), Lex("6"), Lex("7"), Lex("8"), Lex("9"), Lex("0"))
+  integer := Alias(Munch(digit), "int")
+  float := And(integer, Maybe(And(Lex("."), integer)))
+
+  results := float.Compile("13.20")
+  PrintResults(results)
+  // PrintResults(results)
 }
