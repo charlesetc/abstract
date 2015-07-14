@@ -36,7 +36,7 @@ type Lexer struct {
   children []*Lexer
 }
 
-func Base() *Lexer {
+func base() *Lexer {
   tok := new(Lexer)
   tok.action = NONE
   tok.children = []*Lexer{}
@@ -54,24 +54,24 @@ func Lex(str string) *Lexer {
 }
 
 func And(tokens ...*Lexer) *Lexer {
-  base := Base()
-  base.action = AND
-  base.children = tokens
-  return base
+  b := base()
+  b.action = AND
+  b.children = tokens
+  return b
 }
 
 func OneOf(tokens ...*Lexer) *Lexer {
-  base := Base()
-  base.action = XOR
-  base.children = tokens
-  return base
+  b := base()
+  b.action = XOR
+  b.children = tokens
+  return b
 }
 
 func Many(token *Lexer) *Lexer {
-  base := Base()
-  base.action = MANY
-  base.children = append(base.children, token)
-  return base
+  b := base()
+  b.action = MANY
+  b.children = append(b.children, token)
+  return b
 }
 
 func NMany(token *Lexer, numbers... int) *Lexer {
@@ -86,34 +86,34 @@ func NMany(token *Lexer, numbers... int) *Lexer {
   default:
     panic("NMany requires (1..2) numbers after the lexer.\nExample: NMany(myLexer, 4, 0) // Between 0 to 4")
   }
-  base := Base()
-  base.action = NMANY
-  base.to = to
-  base.from = from
-  base.children = append(base.children, token)
-  return base
+  b := base()
+  b.action = NMANY
+  b.to = to
+  b.from = from
+  b.children = append(b.children, token)
+  return b
 }
 
 func Munch(token *Lexer) *Lexer {
-  base := Base()
-  base.action = MUNCH
-  base.children = append(base.children, token)
-  return base
+  b := base()
+  b.action = MUNCH
+  b.children = append(b.children, token)
+  return b
 }
 
 func Maybe(token *Lexer) *Lexer {
-  base := Base()
-  base.action = OR    // more efficient than making a new list.
-  base.children = append(base.children, token)
-  return base
+  b := base()
+  b.action = OR    // more efficient than making a new list.
+  b.children = append(b.children, token)
+  return b
 }
 
 func Alias(token *Lexer, str string) *Lexer {
-  base := Base()
-  base.action = NONE // don't know what this will do
-  base.children = append(base.children, token)
-  base.token = str
-  return base
+  b := base()
+  b.action = NONE // don't know what this will do
+  b.children = append(b.children, token)
+  b.token = str
+  return b
 }
 
 func (self *Lexer) Alias(str string) *Lexer {

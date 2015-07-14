@@ -24,7 +24,7 @@ func TestAnd(t *testing.T)  {
   // Multple Parameters
   lexer = And(a, b, c)
   results := lexer.Compile("abc")
-  PrintResults(results)
+  // PrintResults(results)
   result = lexer.MustCompile("abc")
   if !CompareTokens(result.tokens, []string{"a", "b", "c"}) {
     t.Error("AND with multiple parameters")
@@ -46,7 +46,7 @@ func TestOr(t *testing.T) {
     t.Error("Maybe returns too many possible tracks")
   }
   result := lexer.MustCompile ("aab")
-  
+
   str1 := "abc"
   str2 := "ac"
   lexer = And(a, Maybe(b), c)
