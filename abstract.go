@@ -2,6 +2,7 @@
 package abstract
 
 import (
+  "bytes"
   "strings"
   "fmt"
 )
@@ -16,16 +17,21 @@ const (
   MANY
   MUNCH
   NMANY
+  OPERATOR // Only used in Syntax Tree part.
 )
 
 type Token struct {
-  name string
-  value string
+  Name string
+  Value string
 }
 
 type Result struct {
   tokens []*Token
   left_over string
+}
+
+func (r *Result) Tokens() []*Token {
+  return r.tokens
 }
 
 type Lexer struct {
@@ -128,6 +134,9 @@ func newToken(str string) *Token {
   return &Token{str, str}
 }
 
+func (self *Token) String() string {
+  return self.Name + ":" + self.Value
+}
 
 func (self *Lexer) Compile(str string) ([]*Result) {
   if len(self.children) == 0 {
@@ -165,7 +174,7 @@ func (self *Lexer) Compile(str string) ([]*Result) {
         if self.token != "" {
           value := ""
           for _, tok := range res.tokens {
-            value = value + tok.value
+            value = value + tok.Value
           }
           the_tokens = []*Token{&Token{self.token, value}}
         } else {
@@ -258,9 +267,9 @@ func PrintResult(res *Result, answers...bool)  {
     if i != 0 {
       fmt.Print(" ")
     }
-    fmt.Print(tok.name)
+    fmt.Print(tok.Name)
     fmt.Print(":")
-    fmt.Print(tok.value)
+    fmt.Print(tok.Value)
   }
   fmt.Print(")")
   fmt.Print(res.left_over)
@@ -317,3 +326,96 @@ var Upper *Lexer =  OneOf(
 var Alpha *Lexer =  OneOf(Upper, Lower)
 var Alphanumeric *Lexer = OneOf(Alpha, Digit)
 var Eof *Lexer = Lex(string([]byte{0}))
+
+
+//// Abstract Syntax Trees.
+
+type Abstract struct {
+  Token *Token
+  Children []*Abstract
+}
+
+func (self *Abstract) String() string {
+  var out bytes.Buffer
+  if self.Token != nil {
+    out.WriteString(self.Token.String())
+  }
+  out.WriteString("[")
+  for i, child := range self.Children {
+    if i != 0 {
+      out.WriteString(" ")
+    }
+    out.WriteString(child.String())
+  }
+  out.WriteString("]")
+  return out.String()
+}
+
+
+func AbstractFromToken(token *Token) *Abstract {
+  return &Abstract{Token: token, Children: []*Abstract{}}
+}
+
+func AbstractWithName(str string) *Abstract {
+  t := new(Token)
+  t.Name = str
+  return AbstractFromToken(t)
+}
+
+func AbstractParent(tokens []*Token) *Abstract {
+  children := make([]*Abstract, len(tokens))
+  for i, tok := range tokens {
+    children[i] = AbstractFromToken(tok)
+  }
+  a := new(Abstract)
+  a.Children = children
+  // Leaving token nil.
+  return a
+}
+
+// Assumes side-effects
+func (self *Abstract) Walk(f func(*Abstract)) {
+  for _, child := range self.Children {
+    child.Walk(f)
+  }
+  f(self)
+}
+
+func (self *Abstract) printChildren() {
+  fmt.Print(self.Token)
+  fmt.Print("(")
+  for i, child := range self.Children {
+    if i != 0 {
+      fmt.Print(" ")
+    }
+    fmt.Print(child.Token)
+  }
+  fmt.Println(")")
+}
+
+// Default left-associative // right-associative -> reverse list.
+func (self *Abstract) Operator(name string, left_number int, right_number int) {
+  self.Walk(func (abstract *Abstract) {
+    for i, child := range abstract.Children {
+      if child.Token.Name == name {
+        if i < left_number {
+          panic(fmt.Sprintf("Operator %s needs %d tokens to its left.", name, left_number))
+        } else if i > (len(abstract.Children) - right_number) {
+          panic(fmt.Sprintf("Operator %s needs %d tokens to its right.", name, right_number))
+        }
+
+        left := AbstractWithName("left_op")
+        right := AbstractWithName("right_op")
+
+        alternative_children := make([]*Abstract, len(abstract.Children))
+        copy(alternative_children, abstract.Children)
+
+        left.Children = alternative_children[i-left_number:i]
+        right.Children = alternative_children[i+1:i+1+right_number]
+        child.Children = []*Abstract{left, right}
+
+        abstract.Children = append(append(abstract.Children[:i-left_number], abstract.Children[i]), abstract.Children[i+1+right_number:]...)
+      }
+    }
+  })
+}
