@@ -2,6 +2,10 @@
 # Abstract
 #### Generate abstract syntax trees, easily, in Go.
 
+* No code generation
+* No additional languages
+* Just a solid parsing library in Go
+
 ## Lexical Phase
 
 Abstract provides you with a set of functions, which when combined

@@ -25,6 +25,16 @@ type Token struct {
   Value string
 }
 
+type operator struct {
+  name string
+  left int
+  right int
+}
+
+func Operator(name string, left int, right int) *operator {
+  return &operator{name, left, right}
+}
+
 type Result struct {
   tokens []*Token
   left_over string
@@ -126,6 +136,13 @@ func (self *Lexer) Alias(str string) *Lexer {
   return Alias(self, str)
 }
 
+func (self *Lexer) Garbage() *Lexer {
+  b := base()
+  b.children = append(b.children, self)
+  b.token = "abstract://garbage"
+  return b
+}
+
 func singleResult(toks []*Token, left_over string) []*Result {
   return []*Result{&Result{tokens: toks, left_over: left_over}}
 }
@@ -170,12 +187,18 @@ func (self *Lexer) Compile(str string) ([]*Result) {
 
       child_results := child.Compile(result.left_over)
       for _, res := range child_results {
+
         var the_tokens []*Token
         if self.token != "" {
+
           value := ""
-          for _, tok := range res.tokens {
-            value = value + tok.Value
+
+          if self.token != "abstract://garbage" {
+            for _, tok := range res.tokens {
+              value = value + tok.Value
+            }
           }
+
           the_tokens = []*Token{&Token{self.token, value}}
         } else {
           the_tokens = res.tokens
@@ -326,6 +349,7 @@ var Upper *Lexer =  OneOf(
 var Alpha *Lexer =  OneOf(Upper, Lower)
 var Alphanumeric *Lexer = OneOf(Alpha, Digit)
 var Eof *Lexer = Lex(string([]byte{0}))
+var Space = OneOf(Lex(" "), Lex("\n"), Lex("\t"))
 
 
 //// Abstract Syntax Trees.
@@ -394,18 +418,38 @@ func (self *Abstract) printChildren() {
 }
 
 // Default left-associative // right-associative -> reverse list.
-func (self *Abstract) Operator(name string, left_number int, right_number int) {
+func (self *Abstract) Rule(ops ...*operator) {
   self.Walk(func (abstract *Abstract) {
-    for i, child := range abstract.Children {
-      if child.Token.Name == name {
+    var left_number int
+    var right_number int
+    var name string
+    var matched bool
+
+    i := 0
+    for i < len(abstract.Children) {
+
+      child := abstract.Children[i]
+      matched = false
+
+      for _, op := range ops {
+        if child.Token.Name == op.name {
+          left_number = op.left
+          right_number = op.right
+          name = op.name
+          matched = true
+          break
+        }
+      }
+
+      if matched {
         if i < left_number {
-          panic(fmt.Sprintf("Operator %s needs %d tokens to its left.", name, left_number))
+          panic(fmt.Sprintf("Rule %s needs %d tokens to its left.", name, left_number))
         } else if i > (len(abstract.Children) - right_number) {
-          panic(fmt.Sprintf("Operator %s needs %d tokens to its right.", name, right_number))
+          panic(fmt.Sprintf("Rule %s needs %d tokens to its right.", name, right_number))
         }
 
-        left := AbstractWithName("left_op")
-        right := AbstractWithName("right_op")
+        left := AbstractWithName("abstract://right")
+        right := AbstractWithName("abstract://left")
 
         alternative_children := make([]*Abstract, len(abstract.Children))
         copy(alternative_children, abstract.Children)
@@ -415,7 +459,10 @@ func (self *Abstract) Operator(name string, left_number int, right_number int) {
         child.Children = []*Abstract{left, right}
 
         abstract.Children = append(append(abstract.Children[:i-left_number], abstract.Children[i]), abstract.Children[i+1+right_number:]...)
+
+        i = i - (len(left.Children) + len(right.Children) - 1)
       }
+      i++
     }
   })
 }
