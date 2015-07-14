@@ -143,6 +143,10 @@ func (self *Lexer) Garbage() *Lexer {
   return b
 }
 
+func Garbage(l *Lexer) *Lexer {
+  return l.Garbage()
+}
+
 func singleResult(toks []*Token, left_over string) []*Result {
   return []*Result{&Result{tokens: toks, left_over: left_over}}
 }
@@ -384,6 +388,10 @@ func AbstractWithName(str string) *Abstract {
   t := new(Token)
   t.Name = str
   return AbstractFromToken(t)
+}
+
+func AbstractFromResult(result *Result) *Abstract {
+  return AbstractParent(result.Tokens())
 }
 
 func AbstractParent(tokens []*Token) *Abstract {

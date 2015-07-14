@@ -198,7 +198,7 @@ func TestLexicalIntegration(t *testing.T)  {
 }
 
 func TestGarbage(t *testing.T) {
-  lexer := And(a,b,c.Garbage()).Alias("hello")
+  lexer := And(a,b,Garbage(c)).Alias("hello")
   result := lexer.MustCompile("abc")
   if result.Tokens()[0].Value != "ab"{
     t.Errorf("Either Alias() or Garbage() doesn't work.")
@@ -209,7 +209,7 @@ func TestGarbage(t *testing.T) {
 
 func TestBasicOperator(t *testing.T)  {
   result := And(a, b, c).MustCompile("abc")
-  tree := AbstractParent(result.Tokens())
+  tree := AbstractFromResult(result)
   tree.Operator("b", 1, 1)
   if len(tree.Children) != 1 {
     t.Error("Operator is not grouping properly")

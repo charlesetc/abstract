@@ -54,7 +54,7 @@
 			<div id="nav">
 				<select id="files">
 				
-				<option value="file0">abstract/abstract.go (81.0%)</option>
+				<option value="file0">abstract/abstract.go (81.1%)</option>
 				
 				</select>
 			</div>
@@ -211,6 +211,10 @@ func (self *Lexer) Garbage() *Lexer <span class="cov8" title="1">{
   b.children = append(b.children, self)
   b.token = "abstract://garbage"
   return b
+}</span>
+
+func Garbage(l *Lexer) *Lexer <span class="cov8" title="1">{
+  return l.Garbage()
 }</span>
 
 func singleResult(toks []*Token, left_over string) []*Result <span class="cov8" title="1">{
