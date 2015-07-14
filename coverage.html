@@ -54,7 +54,7 @@
 			<div id="nav">
 				<select id="files">
 				
-				<option value="file0">charlesetc.com/abstract/abstract.go (98.5%)</option>
+				<option value="file0">abstract/abstract.go (81.0%)</option>
 				
 				</select>
 			</div>
@@ -72,6 +72,7 @@
 package abstract
 
 import (
+  "bytes"
   "strings"
   "fmt"
 )
@@ -86,17 +87,32 @@ const (
   MANY
   MUNCH
   NMANY
+  OPERATOR // Only used in Syntax Tree part.
 )
 
 type Token struct {
-  name string
-  value string
+  Name string
+  Value string
 }
+
+type operator struct {
+  name string
+  left int
+  right int
+}
+
+func Operator(name string, left int, right int) *operator <span class="cov8" title="1">{
+  return &amp;operator{name, left, right}
+}</span>
 
 type Result struct {
   tokens []*Token
   left_over string
 }
+
+func (r *Result) Tokens() []*Token <span class="cov8" title="1">{
+  return r.tokens
+}</span>
 
 type Lexer struct {
   token string
@@ -106,7 +122,7 @@ type Lexer struct {
   children []*Lexer
 }
 
-func Base() *Lexer <span class="cov8" title="1">{
+func base() *Lexer <span class="cov8" title="1">{
   tok := new(Lexer)
   tok.action = NONE
   tok.children = []*Lexer{}
@@ -124,24 +140,24 @@ func Lex(str string) *Lexer <span class="cov8" title="1">{
 }</span>
 
 func And(tokens ...*Lexer) *Lexer <span class="cov8" title="1">{
-  base := Base()
-  base.action = AND
-  base.children = tokens
-  return base
+  b := base()
+  b.action = AND
+  b.children = tokens
+  return b
 }</span>
 
 func OneOf(tokens ...*Lexer) *Lexer <span class="cov8" title="1">{
-  base := Base()
-  base.action = XOR
-  base.children = tokens
-  return base
+  b := base()
+  b.action = XOR
+  b.children = tokens
+  return b
 }</span>
 
 func Many(token *Lexer) *Lexer <span class="cov8" title="1">{
-  base := Base()
-  base.action = MANY
-  base.children = append(base.children, token)
-  return base
+  b := base()
+  b.action = MANY
+  b.children = append(b.children, token)
+  return b
 }</span>
 
 func NMany(token *Lexer, numbers... int) *Lexer <span class="cov8" title="1">{
@@ -156,38 +172,45 @@ func NMany(token *Lexer, numbers... int) *Lexer <span class="cov8" title="1">{
   <span class="cov0" title="0">default:
     panic("NMany requires (1..2) numbers after the lexer.\nExample: NMany(myLexer, 4, 0) // Between 0 to 4")</span>
   }
-  <span class="cov8" title="1">base := Base()
-  base.action = NMANY
-  base.to = to
-  base.from = from
-  base.children = append(base.children, token)
-  return base</span>
+  <span class="cov8" title="1">b := base()
+  b.action = NMANY
+  b.to = to
+  b.from = from
+  b.children = append(b.children, token)
+  return b</span>
 }
 
 func Munch(token *Lexer) *Lexer <span class="cov8" title="1">{
-  base := Base()
-  base.action = MUNCH
-  base.children = append(base.children, token)
-  return base
+  b := base()
+  b.action = MUNCH
+  b.children = append(b.children, token)
+  return b
 }</span>
 
 func Maybe(token *Lexer) *Lexer <span class="cov8" title="1">{
-  base := Base()
-  base.action = OR    // more efficient than making a new list.
-  base.children = append(base.children, token)
-  return base
+  b := base()
+  b.action = OR    // more efficient than making a new list.
+  b.children = append(b.children, token)
+  return b
 }</span>
 
 func Alias(token *Lexer, str string) *Lexer <span class="cov8" title="1">{
-  base := Base()
-  base.action = NONE // don't know what this will do
-  base.children = append(base.children, token)
-  base.token = str
-  return base
+  b := base()
+  b.action = NONE // don't know what this will do
+  b.children = append(b.children, token)
+  b.token = str
+  return b
 }</span>
 
 func (self *Lexer) Alias(str string) *Lexer <span class="cov8" title="1">{
   return Alias(self, str)
+}</span>
+
+func (self *Lexer) Garbage() *Lexer <span class="cov8" title="1">{
+  b := base()
+  b.children = append(b.children, self)
+  b.token = "abstract://garbage"
+  return b
 }</span>
 
 func singleResult(toks []*Token, left_over string) []*Result <span class="cov8" title="1">{
@@ -198,6 +221,9 @@ func newToken(str string) *Token <span class="cov8" title="1">{
   return &amp;Token{str, str}
 }</span>
 
+func (self *Token) String() string <span class="cov0" title="0">{
+  return self.Name + ":" + self.Value
+}</span>
 
 func (self *Lexer) Compile(str string) ([]*Result) <span class="cov8" title="1">{
   if len(self.children) == 0 </span><span class="cov8" title="1">{
@@ -231,12 +257,18 @@ func (self *Lexer) Compile(str string) ([]*Result) <span class="cov8" title="1">
 
       child_results := child.Compile(result.left_over)
       for _, res := range child_results </span><span class="cov8" title="1">{
+
         var the_tokens []*Token
         if self.token != "" </span><span class="cov8" title="1">{
+
           value := ""
-          for _, tok := range res.tokens </span><span class="cov8" title="1">{
-            value = value + tok.value
-          }</span>
+
+          if self.token != "abstract://garbage" </span><span class="cov8" title="1">{
+            for _, tok := range res.tokens </span><span class="cov8" title="1">{
+              value = value + tok.Value
+            }</span>
+          }
+
           <span class="cov8" title="1">the_tokens = []*Token{&amp;Token{self.token, value}}</span>
         }<span class="cov8" title="1"> else {
           the_tokens = res.tokens
@@ -321,31 +353,31 @@ func (l *Lexer) Match(str string) bool <span class="cov8" title="1">{
 
 
 
-func PrintResult(res *Result, answers...bool)  <span class="cov8" title="1">{
+func PrintResult(res *Result, answers...bool)  <span class="cov0" title="0">{
   fmt.Print("(")
 
-  for i, tok := range res.tokens </span><span class="cov8" title="1">{
-    if i != 0 </span><span class="cov8" title="1">{
+  for i, tok := range res.tokens </span><span class="cov0" title="0">{
+    if i != 0 </span><span class="cov0" title="0">{
       fmt.Print(" ")
     }</span>
-    <span class="cov8" title="1">fmt.Print(tok.name)
+    <span class="cov0" title="0">fmt.Print(tok.Name)
     fmt.Print(":")
-    fmt.Print(tok.value)</span>
+    fmt.Print(tok.Value)</span>
   }
-  <span class="cov8" title="1">fmt.Print(")")
+  <span class="cov0" title="0">fmt.Print(")")
   fmt.Print(res.left_over)
   fmt.Print(" ")
-  if len(answers) == 0 </span><span class="cov8" title="1">{
+  if len(answers) == 0 </span><span class="cov0" title="0">{
     fmt.Println()
   }</span>
 }
 
-func PrintResults(results []*Result) <span class="cov8" title="1">{
+func PrintResults(results []*Result) <span class="cov0" title="0">{
   fmt.Println("[")
-  for _, res := range results </span><span class="cov8" title="1">{
+  for _, res := range results </span><span class="cov0" title="0">{
     PrintResult(res)
   }</span>
-  <span class="cov8" title="1">fmt.Println("]")</span>
+  <span class="cov0" title="0">fmt.Println("]")</span>
 }
 
 // Example:
@@ -387,6 +419,127 @@ var Upper *Lexer =  OneOf(
 var Alpha *Lexer =  OneOf(Upper, Lower)
 var Alphanumeric *Lexer = OneOf(Alpha, Digit)
 var Eof *Lexer = Lex(string([]byte{0}))
+var Space = OneOf(Lex(" "), Lex("\n"), Lex("\t"))
+
+
+//// Abstract Syntax Trees.
+
+type Abstract struct {
+  Token *Token
+  Children []*Abstract
+}
+
+func (self *Abstract) String() string <span class="cov0" title="0">{
+  var out bytes.Buffer
+  if self.Token != nil </span><span class="cov0" title="0">{
+    out.WriteString(self.Token.String())
+  }</span>
+  <span class="cov0" title="0">out.WriteString("[")
+  for i, child := range self.Children </span><span class="cov0" title="0">{
+    if i != 0 </span><span class="cov0" title="0">{
+      out.WriteString(" ")
+    }</span>
+    <span class="cov0" title="0">out.WriteString(child.String())</span>
+  }
+  <span class="cov0" title="0">out.WriteString("]")
+  return out.String()</span>
+}
+
+
+func AbstractFromToken(token *Token) *Abstract <span class="cov8" title="1">{
+  return &amp;Abstract{Token: token, Children: []*Abstract{}}
+}</span>
+
+func AbstractWithName(str string) *Abstract <span class="cov8" title="1">{
+  t := new(Token)
+  t.Name = str
+  return AbstractFromToken(t)
+}</span>
+
+func AbstractParent(tokens []*Token) *Abstract <span class="cov8" title="1">{
+  children := make([]*Abstract, len(tokens))
+  for i, tok := range tokens </span><span class="cov8" title="1">{
+    children[i] = AbstractFromToken(tok)
+  }</span>
+  <span class="cov8" title="1">a := new(Abstract)
+  a.Children = children
+  // Leaving token nil.
+  return a</span>
+}
+
+// Assumes side-effects
+func (self *Abstract) Walk(f func(*Abstract)) <span class="cov8" title="1">{
+  for _, child := range self.Children </span><span class="cov8" title="1">{
+    child.Walk(f)
+  }</span>
+  <span class="cov8" title="1">f(self)</span>
+}
+
+func (self *Abstract) printChildren() <span class="cov0" title="0">{
+  fmt.Print(self.Token)
+  fmt.Print("(")
+  for i, child := range self.Children </span><span class="cov0" title="0">{
+    if i != 0 </span><span class="cov0" title="0">{
+      fmt.Print(" ")
+    }</span>
+    <span class="cov0" title="0">fmt.Print(child.Token)</span>
+  }
+  <span class="cov0" title="0">fmt.Println(")")</span>
+}
+
+func (self *Abstract) Operator(name string, left int, right int)  <span class="cov8" title="1">{
+  self.Rule(Operator(name, left, right))
+}</span>
+
+// Default left-associative // right-associative -&gt; reverse list.
+func (self *Abstract) Rule(ops ...*operator) <span class="cov8" title="1">{
+  self.Walk(func (abstract *Abstract) </span><span class="cov8" title="1">{
+    var left_number int
+    var right_number int
+    var name string
+    var matched bool
+
+    i := 0
+    for i &lt; len(abstract.Children) </span><span class="cov8" title="1">{
+
+      child := abstract.Children[i]
+      matched = false
+
+      for _, op := range ops </span><span class="cov8" title="1">{
+        if child.Token.Name == op.name </span><span class="cov8" title="1">{
+          left_number = op.left
+          right_number = op.right
+          name = op.name
+          matched = true
+          break</span>
+        }
+      }
+
+      <span class="cov8" title="1">if matched </span><span class="cov8" title="1">{
+        if i &lt; left_number </span><span class="cov0" title="0">{
+          panic(fmt.Sprintf("Rule %s needs %d tokens to its left.", name, left_number))</span>
+        }<span class="cov8" title="1"> else if i &gt; (len(abstract.Children) - right_number) </span><span class="cov0" title="0">{
+          panic(fmt.Sprintf("Rule %s needs %d tokens to its right.", name, right_number))</span>
+        }
+
+        <span class="cov8" title="1">left := AbstractWithName("abstract_right")
+        right := AbstractWithName("abstract_left")
+
+        alternative_children := make([]*Abstract, len(abstract.Children))
+        copy(alternative_children, abstract.Children)
+
+        left.Children = alternative_children[i-left_number:i]
+        right.Children = alternative_children[i+1:i+1+right_number]
+        child.Children = []*Abstract{left, right}
+
+        abstract.Children = append(append(abstract.Children[:i-left_number], abstract.Children[i]), abstract.Children[i+1+right_number:]...)
+
+        i = i - (len(left.Children) + len(right.Children) - 1)</span>
+      }
+      <span class="cov8" title="1">i++</span>
+    }
+  })
+}
 </pre>
 		
 		</div>

@@ -5,6 +5,8 @@ import (
   "testing"
 )
 
+//// Lexical Tests
+
 var a, b, c *Lexer
 
 func init()  {
@@ -195,11 +197,48 @@ func TestLexicalIntegration(t *testing.T)  {
   }
 }
 
+func TestGarbage(t *testing.T) {
+  lexer := And(a,b,c.Garbage()).Alias("hello")
+  result := lexer.MustCompile("abc")
+  if result.Tokens()[0].Value != "ab"{
+    t.Errorf("Either Alias() or Garbage() doesn't work.")
+  }
+}
+
+//// AST Testing
+
+func TestBasicOperator(t *testing.T)  {
+  result := And(a, b, c).MustCompile("abc")
+  tree := AbstractParent(result.Tokens())
+  tree.Operator("b", 1, 1)
+  if len(tree.Children) != 1 {
+    t.Error("Operator is not grouping properly")
+  }
+}
+
+func TestMultipleOperators(t *testing.T)  {
+  result := And(a, b, c, b, c).MustCompile("abcbc")
+  tree := AbstractParent(result.Tokens())
+  tree.Operator("b", 1, 1)
+  if len(tree.Children) != 1 {
+    t.Error("Operator is not grouping properly with multiple operations")
+  }
+}
+
+func TestLeftAssociativity(t *testing.T)  {
+  result := And(a, b, c, b, c).MustCompile("abcbc")
+  tree := AbstractParent(result.Tokens())
+  tree.Operator("b", 1, 1)
+  if tree.Children[0].Children[0].Children[0].Children[0].Children[0].Token.Value != "a" {
+    t.Error("Operator is not by default left-associtive")
+  }
+}
+
 // Testing Helper Functions
 
 func CompareTokens(tokens []*Token, strings []string) bool {
   for i, tok := range tokens {
-    if tok.value != strings[i] {
+    if tok.Value != strings[i] {
       return false
     }
   }

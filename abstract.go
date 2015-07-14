@@ -417,6 +417,10 @@ func (self *Abstract) printChildren() {
   fmt.Println(")")
 }
 
+func (self *Abstract) Operator(name string, left int, right int)  {
+  self.Rule(Operator(name, left, right))
+}
+
 // Default left-associative // right-associative -> reverse list.
 func (self *Abstract) Rule(ops ...*operator) {
   self.Walk(func (abstract *Abstract) {
@@ -448,8 +452,8 @@ func (self *Abstract) Rule(ops ...*operator) {
           panic(fmt.Sprintf("Rule %s needs %d tokens to its right.", name, right_number))
         }
 
-        left := AbstractWithName("abstract://right")
-        right := AbstractWithName("abstract://left")
+        left := AbstractWithName("abstract_right")
+        right := AbstractWithName("abstract_left")
 
         alternative_children := make([]*Abstract, len(abstract.Children))
         copy(alternative_children, abstract.Children)
