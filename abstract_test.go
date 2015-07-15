@@ -18,7 +18,7 @@ func init()  {
 func TestAnd(t *testing.T)  {
   // Most basic test.
   lexer := And(a, b)
-  result := lexer.MustCompile("abc")
+  result := lexer.MustCompile("ab")
   if !CompareTokens(result.tokens, []string{"a", "b"}) {
     t.Error("Basic AND functionality")
   }
@@ -47,7 +47,6 @@ func TestOr(t *testing.T) {
   } else if len(results) > 2 {
     t.Error("Maybe returns too many possible tracks")
   }
-  result := lexer.MustCompile ("aab")
 
   str1 := "abc"
   str2 := "ac"
@@ -60,7 +59,7 @@ func TestOr(t *testing.T) {
   if len(results) != 1 {
     t.Error("There's a problem with Maybe")
   }
-  result = lexer.MustCompile(str1)
+  result := lexer.MustCompile(str1)
   if !CompareTokens(result.tokens, []string{"a", "b", "c"}) {
     t.Error("Maybe gives wrong tokens")
   }

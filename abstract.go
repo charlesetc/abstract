@@ -83,6 +83,14 @@ func OneOf(tokens ...*Lexer) *Lexer {
   return b
 }
 
+func OneOfString(strs ...string) *Lexer {
+  out := make([]*Lexer, 0)
+  for _, s := range strs {
+    out = append(out, Lex(s))
+  }
+  return OneOf(out...)
+}
+
 func Many(token *Lexer) *Lexer {
   b := base()
   b.action = MANY
@@ -271,6 +279,9 @@ func (l *Lexer) MustCompile(str string) *Result {
   case 0:
     panic("Lexer did not compile.")
   case 1:
+    if results[0].left_over != "" {
+      panic("Lexer did not compile well.")
+    }
     return results[0]
   default:
     for _, res := range results {
@@ -278,7 +289,8 @@ func (l *Lexer) MustCompile(str string) *Result {
         return res
       }
     }
-    return results[1]
+    panic("Nondeterministic parse without a good solution!")
+    // return results[1]
     // Not a very smart algorithm.
   }
 }
@@ -429,6 +441,20 @@ func (self *Abstract) printChildren() {
   fmt.Println(")")
 }
 
+func (self *Abstract) Filter(name string)  {
+  self.Walk(func (abstract *Abstract) {
+    i := 0
+    for i < len(abstract.Children) {
+      child := abstract.Children[i]
+      if child.Token != nil && child.Token.Name == name {
+          self.Children = append(self.Children[:i], self.Children[i+1:]...)
+          i--
+      }
+      i++
+    }
+  })
+}
+
 func (self *Abstract) Operator(name string, left int, right int)  {
   self.Rule(Operator(name, left, right))
 }
@@ -482,7 +508,9 @@ func (self *Abstract) Rule(ops ...*operator) {
     var matched bool
 
     i := 0
+
     for i < len(abstract.Children) {
+
 
       child := abstract.Children[i]
       matched = false
@@ -498,6 +526,7 @@ func (self *Abstract) Rule(ops ...*operator) {
       }
 
       if matched {
+
         if i < left_number {
           panic(fmt.Sprintf("Rule %s needs %d tokens to its left.", name, left_number))
         } else if i > (len(abstract.Children) - right_number) {
@@ -516,7 +545,8 @@ func (self *Abstract) Rule(ops ...*operator) {
 
         abstract.Children = append(append(abstract.Children[:i-left_number], abstract.Children[i]), abstract.Children[i+1+right_number:]...)
 
-        i = i - (len(left.Children) + len(right.Children) - 1)
+        i = i - (len(left.Children))
+
       }
       i++
     }
