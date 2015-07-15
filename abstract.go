@@ -159,7 +159,9 @@ func (self *Token) String() string {
   return self.Name + ":" + self.Value
 }
 
+
 func (self *Lexer) Compile(str string) ([]*Result) {
+
   if len(self.children) == 0 {
     s := string(append([]byte(str), 0))
     if strings.HasPrefix(s, self.token) {
@@ -326,6 +328,8 @@ func PrintResults(results []*Result) {
 
 
 // I am aware how ugly this is.
+// I can fix this with a parser like "1-3" or "a-t"!!
+// and then make  a function like that!
 var Digit *Lexer =  OneOf(Lex("0"),
                     Lex("1"), Lex("2"), Lex("3"),
                     Lex("4"), Lex("5"), Lex("6"),
@@ -427,6 +431,46 @@ func (self *Abstract) printChildren() {
 
 func (self *Abstract) Operator(name string, left int, right int)  {
   self.Rule(Operator(name, left, right))
+}
+
+func (self *Abstract) Between(left string, right string) {
+  self.Walk(func (abstract *Abstract) {
+    left_occurances := make([]int, 0)
+    for i, child := range abstract.Children {
+      if child.Token.Name == left {
+        left_occurances = append(left_occurances, i)
+      }
+    }
+
+    for len(left_occurances) > 0 {
+      // Basically pop off a value:
+      len_minus_one := len(left_occurances) - 1
+      leftmost := left_occurances[len_minus_one]
+      left_occurances = left_occurances[:len_minus_one]
+
+      var rightmost int // though actually nextright
+      for rightmost = leftmost + 1; self.Children[rightmost].Token.Name != right; rightmost++ {}
+      if self.Children[rightmost].Token.Name != right {
+        panic(fmt.Sprintf("Unmatched %s. Looking for %s.", left, right))
+      }
+      left_child := abstract.Children[leftmost]
+      right_child := abstract.Children[rightmost]
+      new_token := &Token{
+        Name: left_child.Token.Name + right_child.Token.Name,
+        Value: left_child.Token.Value + right_child.Token.Value}
+      new_child := AbstractFromToken(new_token)
+      new_child.Children = make([]*Abstract, rightmost - leftmost - 1)
+
+      copy(new_child.Children, abstract.Children[leftmost+1:rightmost])
+      old_list := make([]*Abstract, len(abstract.Children))
+      copy(old_list, abstract.Children)
+
+      abstract.Children = make([]*Abstract, 0)
+      abstract.Children = append(abstract.Children, old_list[:leftmost]...)
+      abstract.Children = append(abstract.Children, new_child)
+      abstract.Children = append(abstract.Children, old_list[rightmost+1:]...)
+    }
+  })
 }
 
 // Default left-associative // right-associative -> reverse list.

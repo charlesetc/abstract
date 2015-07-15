@@ -234,6 +234,39 @@ func TestLeftAssociativity(t *testing.T)  {
   }
 }
 
+func TestBasicBetween(t *testing.T)  {
+  left := Lex("(")
+  right := Lex(")")
+  result := And(a, left, right, c).MustCompile("a()c")
+  tree := AbstractParent(result.Tokens())
+  tree.Between("(", ")")
+  if len(tree.Children) != 3 || tree.Children[1].Token.Name != "()" {
+    t.Error("Between is not handling an empty case properly")
+  }
+  result = And(a, left, b, right, c).MustCompile("a(b)c")
+  tree = AbstractFromResult(result)
+  tree.Between("(", ")")
+  if len(tree.Children) != 3 || tree.Children[1].Token.Name != "()" {
+    t.Error("Between is not handling an empty case properly")
+  }
+  if tree.Children[1].Children[0].Token.Name != "b" {
+    t.Error("Between does not have the right value in the new token")
+  }
+}
+
+func TestComplexBetween(t *testing.T)  {
+  left := Lex("(")
+  right := Lex(")")
+  tree := AbstractFromResult(And(a, left, a, left, b, right, right, c).MustCompile("a(a(b))c"))
+  tree.Between("(", ")")
+  if len(tree.Children) != 3 || len(tree.Children[1].Children) != 2 {
+    t.Error("Between doesn't handle nested fields well")
+  }
+  if tree.Children[1].Children[1].Children[0].Token.Value != "b" {
+    t.Error("Value for Between is incorrect")
+  }
+}
+
 // Testing Helper Functions
 
 func CompareTokens(tokens []*Token, strings []string) bool {
