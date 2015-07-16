@@ -54,7 +54,7 @@
 			<div id="nav">
 				<select id="files">
 				
-				<option value="file0">abstract/abstract.go (82.8%)</option>
+				<option value="file0">abstract/abstract.go (78.0%)</option>
 				
 				</select>
 			</div>
@@ -152,6 +152,14 @@ func OneOf(tokens ...*Lexer) *Lexer <span class="cov8" title="1">{
   b.children = tokens
   return b
 }</span>
+
+func OneOfString(strs ...string) *Lexer <span class="cov0" title="0">{
+  out := make([]*Lexer, 0)
+  for _, s := range strs </span><span class="cov0" title="0">{
+    out = append(out, Lex(s))
+  }</span>
+  <span class="cov0" title="0">return OneOf(out...)</span>
+}
 
 func Many(token *Lexer) *Lexer <span class="cov8" title="1">{
   b := base()
@@ -341,14 +349,18 @@ func (l *Lexer) MustCompile(str string) *Result <span class="cov8" title="1">{
   <span class="cov0" title="0">case 0:
     panic("Lexer did not compile.")</span>
   <span class="cov8" title="1">case 1:
-    return results[0]</span>
+    if results[0].left_over != "" </span><span class="cov0" title="0">{
+      panic("Lexer did not compile well.")</span>
+    }
+    <span class="cov8" title="1">return results[0]</span>
   <span class="cov8" title="1">default:
     for _, res := range results </span><span class="cov8" title="1">{
       if res.left_over == "" </span><span class="cov8" title="1">{
         return res
       }</span>
     }
-    <span class="cov8" title="1">return results[1]</span>
+    <span class="cov0" title="0">panic("Nondeterministic parse without a good solution!")</span>
+    // return results[1]
     // Not a very smart algorithm.
   }
 }
@@ -499,6 +511,20 @@ func (self *Abstract) printChildren() <span class="cov0" title="0">{
   <span class="cov0" title="0">fmt.Println(")")</span>
 }
 
+func (self *Abstract) Filter(name string)  <span class="cov0" title="0">{
+  self.Walk(func (abstract *Abstract) </span><span class="cov0" title="0">{
+    i := 0
+    for i &lt; len(abstract.Children) </span><span class="cov0" title="0">{
+      child := abstract.Children[i]
+      if child.Token != nil &amp;&amp; child.Token.Name == name </span><span class="cov0" title="0">{
+          self.Children = append(self.Children[:i], self.Children[i+1:]...)
+          i--
+      }</span>
+      <span class="cov0" title="0">i++</span>
+    }
+  })
+}
+
 func (self *Abstract) Operator(name string, left int, right int)  <span class="cov8" title="1">{
   self.Rule(Operator(name, left, right))
 }</span>
@@ -552,7 +578,9 @@ func (self *Abstract) Rule(ops ...*operator) <span class="cov8" title="1">{
     var matched bool
 
     i := 0
+
     for i &lt; len(abstract.Children) </span><span class="cov8" title="1">{
+
 
       child := abstract.Children[i]
       matched = false
@@ -568,6 +596,7 @@ func (self *Abstract) Rule(ops ...*operator) <span class="cov8" title="1">{
       }
 
       <span class="cov8" title="1">if matched </span><span class="cov8" title="1">{
+
         if i &lt; left_number </span><span class="cov0" title="0">{
           panic(fmt.Sprintf("Rule %s needs %d tokens to its left.", name, left_number))</span>
         }<span class="cov8" title="1"> else if i &gt; (len(abstract.Children) - right_number) </span><span class="cov0" title="0">{
@@ -586,7 +615,8 @@ func (self *Abstract) Rule(ops ...*operator) <span class="cov8" title="1">{
 
         abstract.Children = append(append(abstract.Children[:i-left_number], abstract.Children[i]), abstract.Children[i+1+right_number:]...)
 
-        i = i - (len(left.Children) + len(right.Children) - 1)</span>
+        i = i - (len(left.Children))</span>
+
       }
       <span class="cov8" title="1">i++</span>
     }

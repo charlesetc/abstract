@@ -6,6 +6,8 @@
 * No additional languages
 * Just a solid parsing library in Go
 
+[![asciicast](https://asciinema.org/a/6jff9qbytb4fi4cg6x0q234mv.png)](https://asciinema.org/a/6jff9qbytb4fi4cg6x0q234mv)
+
 ## Example First?
 Let's get right to it, here's how you parse arithmetic expressions:
 
@@ -160,5 +162,5 @@ operator, use the function `ROperator`.
 ## TODO
 
 * Make an `NMunch` function which has the same effect as `NMany`.
-* Make a `Between` function that walks a tree like `Rule`
 * Implement Right-Associative operators.
+* Operators that take as many parameters as possible

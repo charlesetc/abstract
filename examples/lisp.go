@@ -7,6 +7,8 @@ import (
 )
 
 func main() {
+
+  /* Lexing */
   left_paren := Lex("(")
   right_paren := Lex(")")
   left_square := Lex("[")
@@ -18,12 +20,15 @@ func main() {
   word := Munch(OneOf(Alpha, punct)).Alias("word")
   number := And(Munch(Digit), Maybe(And(Lex("."), Munch(Digit)))).Alias("number")
 
+
   lexer := Many(OneOf(paren, word, number, spaces, operator))
   result := lexer.MustCompile("(def hi (fn [2 3] this))")
+  
+  /* AST */
   tree := AbstractFromResult(result)
   tree.Filter(" ")
   tree.Between("[", "]")
-  tree.Between("(", ")")
   tree.Operator("word", 0, 2)
+  tree.Between("(", ")")
   fmt.Println(tree)
 }
