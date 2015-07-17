@@ -68,6 +68,14 @@ func Lex(str string) *Lexer {
 	return tok
 }
 
+func LexMultiple(str string) []*Lexer {
+	var l []*Lexer
+	for _, r := range str {
+		l = append(l, Lex(string(r)))
+	}
+	return l
+}
+
 func And(tokens ...*Lexer) *Lexer {
 	b := base()
 	b.action = AND
@@ -334,33 +342,9 @@ func PrintResults(results []*Result) {
 //   PrintResults(results)
 // }
 
-// I am aware how ugly this is.
-// I can fix this with a parser like "1-3" or "a-t"!!
-// and then make  a function like that!
-var Digit *Lexer = OneOf(Lex("0"),
-	Lex("1"), Lex("2"), Lex("3"),
-	Lex("4"), Lex("5"), Lex("6"),
-	Lex("7"), Lex("8"), Lex("9"))
-var Lower *Lexer = OneOf(
-	Lex("a"), Lex("b"), Lex("c"),
-	Lex("d"), Lex("e"), Lex("f"),
-	Lex("g"), Lex("h"), Lex("i"),
-	Lex("j"), Lex("k"), Lex("l"),
-	Lex("m"), Lex("n"), Lex("o"),
-	Lex("p"), Lex("q"), Lex("r"),
-	Lex("s"), Lex("t"), Lex("u"),
-	Lex("v"), Lex("w"), Lex("x"),
-	Lex("y"), Lex("z"))
-var Upper *Lexer = OneOf(
-	Lex("A"), Lex("B"), Lex("C"),
-	Lex("D"), Lex("E"), Lex("F"),
-	Lex("G"), Lex("H"), Lex("I"),
-	Lex("J"), Lex("K"), Lex("L"),
-	Lex("M"), Lex("N"), Lex("O"),
-	Lex("P"), Lex("Q"), Lex("R"),
-	Lex("S"), Lex("T"), Lex("U"),
-	Lex("V"), Lex("W"), Lex("X"),
-	Lex("Y"), Lex("Z"))
+var Digit *Lexer = OneOf(LexMultiple("0123456789")...)
+var Lower *Lexer = OneOf(LexMultiple("abcdefghijklmnopqrstuvwxyz")...)
+var Upper *Lexer = OneOf(LexMultiple("ABCDEFGHIJKLMNOPQRSTUVWXYZ")...)
 var Alpha *Lexer = OneOf(Upper, Lower)
 var Alphanumeric *Lexer = OneOf(Alpha, Digit)
 var Eof *Lexer = Lex(string([]byte{0}))
