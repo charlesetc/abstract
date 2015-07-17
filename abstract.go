@@ -16,6 +16,7 @@ const (
 	MANY
 	MUNCH
 	NMANY
+	FIRST
 	OPERATOR // Only used in Syntax Tree part.
 )
 
@@ -86,6 +87,13 @@ func And(tokens ...*Lexer) *Lexer {
 func OneOf(tokens ...*Lexer) *Lexer {
 	b := base()
 	b.action = XOR
+	b.children = tokens
+	return b
+}
+
+func FirstOf(tokens ...*Lexer) *Lexer {
+	b := base()
+	b.action = FIRST
 	b.children = tokens
 	return b
 }
@@ -265,13 +273,17 @@ NextChild:
 			many_list = output_list // Basically save the last one.
 			current_list = output_list
 			goto ThisChild
+		// case FIRST:
+		// 	if len(output_list) == 0 {
+		// 		continue NextChild
+		// 	} else { // This isn't working?
+		// 		return output_list
+		// 	}
 		}
-
 		if self.action != XOR {
 			current_list = output_list
 		}
 	}
-
 	if self.action == XOR {
 		return xor_list
 	}
@@ -450,13 +462,30 @@ func (self *Abstract) Select(names ...string) *Abstract {
 	tree.Children = make([]*Abstract, 0)
 
 	self.Walk(func(abstract *Abstract) {
-		if abstract.Token != nil && 
+		if abstract.Token != nil &&
 		strings.HasPrefix(abstract.Token.Name, name) &&
 		strings.HasPrefix(abstract.Token.Value, value) {
 			tree.Children = append(tree.Children, abstract)
 		}
 	})
 	return tree
+}
+
+func (self *Abstract) parentApply(lexer *Lexer) {
+	if self.Token == nil {
+		panic("A lexer cannot be applied to an Abstract Tree without a token.")
+	}
+	fmt.Println(self.Token.Name)
+	result := lexer.MustCompile(self.Token.Value)
+	other := AbstractFromResult(result)
+	self.Children = other.Children
+	self.Token.Value = result.left_over
+}
+
+func (self *Abstract) Apply(lexer *Lexer)  {
+	for _, child := range self.Children {
+		child.parentApply(lexer)
+	}
 }
 
 func (self *Abstract) Operator(name string, left int, right int) {
