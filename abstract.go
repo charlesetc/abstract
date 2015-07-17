@@ -448,6 +448,33 @@ func (self *Abstract) Filter(name string) {
 	})
 }
 
+func (self *Abstract) Select(names ...string) *Abstract {
+	var name, value string
+	switch len(names) {
+	case 1:
+		name = names[0]
+		value = ""
+	case 2:
+		name = names[0]
+		value = names[1]
+	case 0:
+		fallthrough
+	default:
+		panic("Select takes either one or two parameters")
+	}
+	tree := AbstractWithName("parent")
+	tree.Children = make([]*Abstract, 0)
+
+	self.Walk(func(abstract *Abstract) {
+		if abstract.Token != nil && 
+		strings.HasPrefix(abstract.Token.Name, name) &&
+		strings.HasPrefix(abstract.Token.Value, value) {
+			tree.Children = append(tree.Children, abstract)
+		}
+	})
+	return tree
+}
+
 func (self *Abstract) Operator(name string, left int, right int) {
 	self.Rule(Operator(name, left, right))
 }
@@ -473,8 +500,10 @@ func (self *Abstract) Between(left string, right string) {
 			if self.Children[rightmost].Token.Name != right {
 				panic(fmt.Sprintf("Unmatched %s. Looking for %s.", left, right))
 			}
+
 			left_child := abstract.Children[leftmost]
 			right_child := abstract.Children[rightmost]
+
 			new_token := &Token{
 				Name:  left_child.Token.Name + right_child.Token.Name,
 				Value: left_child.Token.Value + right_child.Token.Value}
